@@ -1,0 +1,23 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# env — NEVER commit; holds STATIONLY_ADMIN_KEY + CF service token
+.env
+.env.local
+.env*.local
+
+# misc
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# Deploy scripts (hold host + key path)
+staging_*.sh
+prod_*.sh
