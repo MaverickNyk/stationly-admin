@@ -17,7 +17,7 @@ login.
 ```
 Build (your Mac, arm64)         Registry                Each VM
 ─────────────────────           ────────                ───────────────────────────
-publish_image.sh: docker build  ──►   ghcr.io/mavericknyk/    docker compose pull <tag>
+scripts/publish_image.sh: docker build  ──►   ghcr.io/mavericknyk/    docker compose pull <tag>
             docker push         stationly-admin:<tag>   docker compose up -d
                                                         └─ container on 127.0.0.1:4000
 
@@ -69,11 +69,11 @@ CF_ACCESS_CLIENT_SECRET=
 
 ## 3. Day-to-day: release & deploy
 
-### 3a. Build, test, push (local — `publish_image.sh`)
+### 3a. Build, test, push (local — `scripts/publish_image.sh` or `npm run publish`)
 
 ```bash
-# fast inner loop (no Docker): ./run_local.sh → choice 1 (http://localhost:4000)
-./publish_image.sh          # builds ghcr.io/...:<tag>, prompts you, pushes on "y"
+# fast inner loop (no Docker): npm run local → choice 1 (http://localhost:4000)
+npm run publish          # builds ghcr.io/...:<tag>, prompts you, pushes on "y"
 ```
 `publish_image.sh` tags the image `<UTC-datetime>-<git-sha>` (e.g.
 `20260607-1430-03cfc58`, plus `-dirty` if the tree has uncommitted changes),
@@ -325,7 +325,7 @@ port. Check `docker compose ps`; ensure the container publishes `127.0.0.1:4000`
 
 **Deploy Action can't pull the image** — the VM isn't logged into GHCR
 (`docker login ghcr.io …`, step 4.4) or the `<tag>` was never pushed by
-`publish_image.sh`.
+`scripts/publish_image.sh` (or `npm run publish`).
 
 **`manifest unknown` / wrong arch** — the image must be built on arm64 (the
 Mac). Don't let CI build it; CI only deploys.
@@ -351,9 +351,9 @@ the Access app's destination hostname matches exactly. Test:
 
 ```bash
 npm install
-./run_local.sh                     # interactive script to run locally (dev or docker)
+npm run local                      # interactive script to run locally (dev or docker)
 ```
 Use `STATIONLY_ENV=staging` for local dev (shows the banner). To target a local
 backend, set `BACKEND_URL=http://localhost:3000` and make sure that backend's
 `STATIONLY_ADMIN_KEY` matches `ADMIN_KEY`. To test the actual production image
-locally, run `./run_local.sh` and choose Option 2 (Local Docker Container).
+locally, run `npm run local` and choose Option 2 (Local Docker Container).

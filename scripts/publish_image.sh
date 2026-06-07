@@ -12,7 +12,7 @@ set -euo pipefail
 # Prereqs: Docker Desktop running, and `docker login ghcr.io` done once.
 # =============================================================================
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 # Ensure we are on the main branch
 BRANCH="$(git branch --show-current)"

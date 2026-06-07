@@ -51,7 +51,7 @@ public mobile API or the marketing website.
 
 ```bash
 npm install
-./run_local.sh
+npm run local
 ```
 
 See [docs/OPERATIONS.md](docs/OPERATIONS.md) for deploying to staging/prod.
