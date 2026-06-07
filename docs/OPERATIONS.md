@@ -130,10 +130,18 @@ rebuild needed.
    ```
    Copy `docker-compose.yml` into `~/stationly-admin/` (the Deploy Action
    expects it there; the first deploy assumes it exists).
-6. **nginx site** (TLS via the host's existing Let's Encrypt cert). A cert for
-   the domain must already exist under `/etc/letsencrypt/live/<domain>/` (certbot
-   auto-renews it). Install the site — file named `stationly-admin`,
-   generic except the domain:
+6. **nginx site** (TLS via the host's existing Let's Encrypt cert).
+
+   If generating the Let's Encrypt certificate for the first time:
+   > [!IMPORTANT]
+   > **Cloudflare Access & Certbot Bypass:**
+   > Because Cloudflare Access intercepts and redirects all requests (including the Let's Encrypt validation bot), Certbot HTTP-01 validation will fail with unauthorized access.
+   > 1. In the Cloudflare DNS settings, toggle the record for your domain (e.g., `admin.stationly.co.uk`) from **Proxied (Orange cloud)** to **DNS Only (Grey cloud)**.
+   > 2. On the VM, run the Certbot request command:
+   >    `sudo certbot certonly --nginx -d <domain>`
+   > 3. Once successful, toggle the Cloudflare DNS record back to **Proxied (Orange cloud)**.
+
+   Once the cert exists under `/etc/letsencrypt/live/<domain>/` (certbot auto-renews it), install the site configuration file named `stationly-admin`:
    ```bash
    DOMAIN=staging-admin.stationly.co.uk
    sudo tee /etc/nginx/sites-available/stationly-admin > /dev/null <<EOF

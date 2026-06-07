@@ -1,106 +1,110 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import ViewHeader from './ViewHeader';
-import { relTime, dateTime } from '@/lib/format';
+import { useMemo, useState } from 'react';
+import Toolbar from './ui/Toolbar';
+import DataCard from './ui/DataCard';
+import SortTh from './ui/SortTh';
+import Pager from './ui/Pager';
+import ErrorBanner from './ui/ErrorBanner';
+import GrowthChart from './ui/GrowthChart';
+import { relTime, dateTime, toMs } from '@/lib/format';
+import { useResource } from '@/lib/useResource';
+import { useSort } from '@/lib/useSort';
+import { usePaged } from '@/lib/usePaged';
+import { downloadCsv } from '@/lib/csv';
 import { ENV_META, type EnvName } from '@/lib/env';
 import type { WaitlistEntry } from '@/lib/backend';
 
+type WaitlistPayload = { items: WaitlistEntry[]; refreshedAt: number; cached: boolean };
+
 export default function WaitlistTable({ env }: { env: EnvName }) {
-  const [items, setItems] = useState<WaitlistEntry[]>([]);
-  const [refreshedAt, setRefreshedAt] = useState(0);
-  const [cached, setCached] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { data, busy, error, reload } = useResource<WaitlistPayload>(
+    '/api/admin/data?resource=waitlist',
+    '/api/admin/data?resource=waitlist&refresh=1',
+  );
   const [q, setQ] = useState('');
 
-  const load = useCallback(async (refresh = false) => {
-    setBusy(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/admin/data?resource=waitlist${refresh ? '&refresh=1' : ''}`);
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setItems(Array.isArray(data.items) ? data.items : []);
-        setRefreshedAt(data.refreshedAt || 0);
-        setCached(!!data.cached);
-      } else {
-        setItems([]);
-        setError(data.message || `Failed (${res.status})`);
-      }
-    } catch (e: any) {
-      setItems([]);
-      setError(e?.message ?? 'Network error');
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load(false);
-  }, [load]);
+  const items = useMemo(() => data?.items ?? [], [data]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     return s ? items.filter((w) => w.email.toLowerCase().includes(s)) : items;
   }, [items, q]);
 
+  const { sorted, key, dir, onSort } = useSort<WaitlistEntry>(
+    filtered,
+    {
+      email: (w) => w.email.toLowerCase(),
+      joined: (w) => toMs(w.joinedAt),
+    },
+    { key: 'joined', dir: 'desc' },
+  );
+  const { slice, page, pageCount, setPage } = usePaged(sorted, 50);
+
   function exportCsv() {
-    const csv = ['email,joinedAt', ...filtered.map((w) => `${w.email},${new Date(w.joinedAt).toISOString()}`)].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `waitlist-${env}.csv`;
-    a.click();
+    downloadCsv(
+      `waitlist-${env}.csv`,
+      ['email', 'joinedAt'],
+      filtered.map((w) => [w.email, new Date(w.joinedAt).toISOString()]),
+    );
   }
 
   return (
     <div>
-      <ViewHeader env={env}>
-        <button onClick={() => load(true)} disabled={busy} title="Does one live Firestore read">
-          {busy ? '…' : '↻ Refresh (1 read)'}
-        </button>
-      </ViewHeader>
+      {items.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2>Waitlist growth</h2>
+          <GrowthChart times={items.map((w) => toMs(w.joinedAt))} />
+        </div>
+      )}
 
-      <div className="toolbar">
-        <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email…" />
-        <span className="toolbar-meta">
-          {filtered.length} of {items.length} ·{' '}
-          {refreshedAt ? `${cached ? '⚡ cached, ' : ''}refreshed ${relTime(refreshedAt)}` : 'from local cache'}
-        </span>
+      <Toolbar
+        search={{ value: q, onChange: setQ, placeholder: 'Search email…' }}
+        meta={
+          <>
+            {filtered.length} of {items.length} ·{' '}
+            {data?.refreshedAt
+              ? `${data.cached ? '⚡ cached, ' : ''}refreshed ${relTime(data.refreshedAt)}`
+              : 'from local cache'}
+          </>
+        }
+      >
         <button className="btn-ghost" onClick={exportCsv} disabled={!filtered.length}>
           Export CSV
         </button>
-      </div>
+        <button onClick={() => reload(true)} disabled={busy} title="Does one live Firestore read">
+          {busy ? '…' : '↻ Refresh (1 read)'}
+        </button>
+      </Toolbar>
 
-      {error && <div className="errors">{error}</div>}
+      <ErrorBanner message={error} onRetry={() => reload()} busy={busy} />
 
-      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-        {filtered.length === 0 && !busy ? (
-          <p className="empty" style={{ padding: 28 }}>
-            No waitlist entries {q ? 'match your search' : `cached for ${ENV_META[env].label}. Hit Refresh to load.`}
-          </p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th className="nowrap">Joined</th>
-                <th className="nowrap">When</th>
+      <DataCard
+        loading={busy && !items.length}
+        isEmpty={!filtered.length}
+        emptyText={`No waitlist entries ${q ? 'match your search' : `cached for ${ENV_META[env].label}. Hit Refresh to load.`}`}
+      >
+        <table className="data-table">
+          <thead>
+            <tr>
+              <SortTh label="Email" sortKey="email" activeKey={key} dir={dir} onSort={onSort} />
+              <SortTh label="Joined" sortKey="joined" activeKey={key} dir={dir} onSort={onSort} className="nowrap" />
+              <th className="nowrap">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {slice.map((w) => (
+              <tr key={w.id}>
+                <td className="cell-title">{w.email}</td>
+                <td className="muted nowrap">{dateTime(toMs(w.joinedAt))}</td>
+                <td className="muted nowrap">{relTime(toMs(w.joinedAt))}</td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((w) => (
-                <tr key={w.id}>
-                  <td className="cell-title">{w.email}</td>
-                  <td className="muted nowrap">{dateTime(w.joinedAt)}</td>
-                  <td className="muted nowrap">{relTime(w.joinedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            ))}
+          </tbody>
+        </table>
+      </DataCard>
+
+      <Pager page={page} pageCount={pageCount} setPage={setPage} />
     </div>
   );
 }

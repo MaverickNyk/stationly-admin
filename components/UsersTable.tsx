@@ -1,46 +1,32 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import ViewHeader from './ViewHeader';
+import { useMemo, useState } from 'react';
 import UserDetailModal from './UserDetailModal';
-import { relTime, dateTime } from '@/lib/format';
+import Toolbar from './ui/Toolbar';
+import DataCard from './ui/DataCard';
+import SortTh from './ui/SortTh';
+import Pager from './ui/Pager';
+import ErrorBanner from './ui/ErrorBanner';
+import GrowthChart from './ui/GrowthChart';
+import { relTime, dateTime, toMs } from '@/lib/format';
+import { useResource } from '@/lib/useResource';
+import { useSort } from '@/lib/useSort';
+import { usePaged } from '@/lib/usePaged';
+import { downloadCsv } from '@/lib/csv';
 import { ENV_META, type EnvName } from '@/lib/env';
 import type { AdminUser } from '@/lib/backend';
 
+type UsersPayload = { items: AdminUser[]; refreshedAt: number; cached: boolean };
+
 export default function UsersTable({ env }: { env: EnvName }) {
-  const [items, setItems] = useState<AdminUser[]>([]);
+  const { data, busy, error, reload } = useResource<UsersPayload>(
+    '/api/admin/data?resource=users',
+    '/api/admin/data?resource=users&refresh=1',
+  );
   const [openUid, setOpenUid] = useState<string | null>(null);
-  const [refreshedAt, setRefreshedAt] = useState(0);
-  const [cached, setCached] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [q, setQ] = useState('');
 
-  const load = useCallback(async (refresh = false) => {
-    setBusy(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/admin/data?resource=users${refresh ? '&refresh=1' : ''}`);
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setItems(Array.isArray(data.items) ? data.items : []);
-        setRefreshedAt(data.refreshedAt || 0);
-        setCached(!!data.cached);
-      } else {
-        setItems([]);
-        setError(data.message || `Failed (${res.status})`);
-      }
-    } catch (e: any) {
-      setItems([]);
-      setError(e?.message ?? 'Network error');
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load(false);
-  }, [load]);
+  const items = useMemo(() => data?.items ?? [], [data]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -53,88 +39,98 @@ export default function UsersTable({ env }: { env: EnvName }) {
     );
   }, [items, q]);
 
+  const { sorted, key, dir, onSort } = useSort<AdminUser>(filtered, {
+    user: (u) => (u.displayName || u.email || u.uid).toLowerCase(),
+    status: (u) => (u.loggedIn ? 1 : 0),
+    stations: (u) => u.stationCount,
+    lastSeen: (u) => toMs(u.lastLoggedInTime),
+    joined: (u) => toMs(u.createdAt),
+  });
+  const { slice, page, pageCount, setPage } = usePaged(sorted, 50);
+
   function exportCsv() {
-    const esc = (v: string | number | boolean) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = [
-      'email,displayName,uid,loggedIn,emailVerified,stationCount,lastLoggedIn,joined',
-      ...filtered.map((u) =>
-        [
-          u.email,
-          u.displayName,
-          u.uid,
-          u.loggedIn,
-          u.emailVerified,
-          u.stationCount,
-          u.lastLoggedInTime ? new Date(u.lastLoggedInTime).toISOString() : '',
-          u.createdAt ? new Date(u.createdAt).toISOString() : '',
-        ]
-          .map(esc)
-          .join(','),
-      ),
-    ].join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([rows], { type: 'text/csv' }));
-    a.download = `users-${env}.csv`;
-    a.click();
+    downloadCsv(
+      `users-${env}.csv`,
+      ['email', 'displayName', 'uid', 'loggedIn', 'emailVerified', 'stationCount', 'lastLoggedIn', 'joined'],
+      filtered.map((u) => [
+        u.email,
+        u.displayName,
+        u.uid,
+        u.loggedIn,
+        u.emailVerified,
+        u.stationCount,
+        u.lastLoggedInTime ? new Date(u.lastLoggedInTime).toISOString() : '',
+        u.createdAt ? new Date(u.createdAt).toISOString() : '',
+      ]),
+    );
   }
 
   return (
     <div>
-      <ViewHeader env={env}>
+      {items.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h2>User growth</h2>
+          <GrowthChart times={items.map((u) => toMs(u.createdAt))} />
+        </div>
+      )}
+
+      <Toolbar
+        search={{ value: q, onChange: setQ, placeholder: 'Search email, name or UID…' }}
+        meta={
+          <>
+            {filtered.length} of {items.length} ·{' '}
+            {data?.refreshedAt
+              ? `${data.cached ? '⚡ cached, ' : ''}refreshed ${relTime(data.refreshedAt)}`
+              : 'from local cache'}
+          </>
+        }
+      >
         <button onClick={exportCsv} disabled={!filtered.length} title="Download the filtered list as CSV">
           ⬇ CSV
         </button>
-        <button onClick={() => load(true)} disabled={busy} title="Does one live Firestore read">
+        <button onClick={() => reload(true)} disabled={busy} title="Does one live Firestore read">
           {busy ? '…' : '↻ Refresh (1 read)'}
         </button>
-      </ViewHeader>
+      </Toolbar>
 
-      <div className="toolbar">
-        <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email, name or UID…" />
-        <span className="toolbar-meta">
-          {filtered.length} of {items.length} ·{' '}
-          {refreshedAt ? `${cached ? '⚡ cached, ' : ''}refreshed ${relTime(refreshedAt)}` : 'from local cache'}
-        </span>
-      </div>
+      <ErrorBanner message={error} onRetry={() => reload()} busy={busy} />
 
-      {error && <div className="errors">{error}</div>}
-
-      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-        {filtered.length === 0 && !busy ? (
-          <p className="empty" style={{ padding: 28 }}>
-            No users {q ? 'match your search' : `cached for ${ENV_META[env].label}. Hit Refresh to load.`}
-          </p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Status</th>
-                <th>Stations</th>
-                <th className="nowrap">Last seen</th>
-                <th className="nowrap">Joined</th>
+      <DataCard
+        loading={busy && !items.length}
+        isEmpty={!filtered.length}
+        emptyText={`No users ${q ? 'match your search' : `cached for ${ENV_META[env].label}. Hit Refresh to load.`}`}
+      >
+        <table className="data-table">
+          <thead>
+            <tr>
+              <SortTh label="User" sortKey="user" activeKey={key} dir={dir} onSort={onSort} />
+              <SortTh label="Status" sortKey="status" activeKey={key} dir={dir} onSort={onSort} />
+              <SortTh label="Stations" sortKey="stations" activeKey={key} dir={dir} onSort={onSort} />
+              <SortTh label="Last seen" sortKey="lastSeen" activeKey={key} dir={dir} onSort={onSort} className="nowrap" />
+              <SortTh label="Joined" sortKey="joined" activeKey={key} dir={dir} onSort={onSort} className="nowrap" />
+            </tr>
+          </thead>
+          <tbody>
+            {slice.map((u) => (
+              <tr key={u.uid} className="row-click" onClick={() => setOpenUid(u.uid)} title="View full details">
+                <td>
+                  <div className="cell-title">{u.displayName || '(no name)'}</div>
+                  <div className="cell-sub">{u.email || u.uid}</div>
+                </td>
+                <td className="nowrap">
+                  <span className={`pill ${u.loggedIn ? 'on' : 'off'}`}>{u.loggedIn ? 'Active' : 'Offline'}</span>
+                  {u.emailVerified ? <span className="pill verified">Verified</span> : <span className="pill muted">Unverified</span>}
+                </td>
+                <td>{u.stationCount}</td>
+                <td className="muted nowrap">{relTime(toMs(u.lastLoggedInTime))}</td>
+                <td className="muted nowrap">{dateTime(toMs(u.createdAt))}</td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((u) => (
-                <tr key={u.uid} className="row-click" onClick={() => setOpenUid(u.uid)} title="View full details">
-                  <td>
-                    <div className="cell-title">{u.displayName || '(no name)'}</div>
-                    <div className="cell-sub">{u.email || u.uid}</div>
-                  </td>
-                  <td className="nowrap">
-                    <span className={`pill ${u.loggedIn ? 'on' : 'off'}`}>{u.loggedIn ? 'Active' : 'Offline'}</span>
-                    {u.emailVerified ? <span className="pill verified">Verified</span> : <span className="pill muted">Unverified</span>}
-                  </td>
-                  <td>{u.stationCount}</td>
-                  <td className="muted nowrap">{relTime(u.lastLoggedInTime)}</td>
-                  <td className="muted nowrap">{dateTime(u.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            ))}
+          </tbody>
+        </table>
+      </DataCard>
+
+      <Pager page={page} pageCount={pageCount} setPage={setPage} />
 
       {openUid && <UserDetailModal uid={openUid} onClose={() => setOpenUid(null)} />}
     </div>

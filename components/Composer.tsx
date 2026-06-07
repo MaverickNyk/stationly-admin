@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import NotificationPreview from './NotificationPreview';
 import ViewHeader from './ViewHeader';
 import UserPicker from './UserPicker';
@@ -8,7 +8,6 @@ import { TFL_LINES } from '@/lib/lines';
 import { TEMPLATES } from '@/lib/templates';
 import {
   AUDIENCE_LABELS,
-  BLAST_AUDIENCES,
   validatePayload,
   type AudienceType,
   type Audience,
@@ -29,6 +28,10 @@ const TYPES = ['announcement', 'line_status_change', 'promo', 'system'];
 
 const NEEDS_SINGLE_VALUE: AudienceType[] = ['line', 'topic', 'uid', 'token'];
 const NEEDS_LIST_VALUE: AudienceType[] = ['uids', 'tokens'];
+
+// Grace period before a notification actually goes out — an undo window so a
+// mistargeted or wrong push can be caught before it reaches anyone.
+const SEND_DELAY_S = 10;
 
 export default function Composer({
   env,
@@ -52,10 +55,11 @@ export default function Composer({
     body: '',
   });
 
-  const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; data: any } | null>(null);
+  // Countdown to actual send (null = not counting). Drives the undo dialog.
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const set = (patch: Partial<NotificationPayload>) => setPayload((p) => ({ ...p, ...patch }));
 
@@ -87,12 +91,33 @@ export default function Composer({
 
   function attemptSend() {
     if (errors.length > 0) return;
-    if (BLAST_AUDIENCES.includes(audienceType) || env === 'prod') setConfirm(true);
-    else doSend();
+    // Every send enters the countdown undo-window before it actually fires —
+    // that grace period (with Cancel) is the single confirmation gate.
+    startCountdown();
   }
 
+  function startCountdown() {
+    setResult(null);
+    setCountdown(SEND_DELAY_S);
+  }
+
+  // Keep the latest doSend reachable from the ticking effect without making it
+  // a dependency (which would reset the timer on every keystroke).
+  const doSendRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      setCountdown(null);
+      doSendRef.current();
+      return;
+    }
+    const t = setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
   async function doSend() {
-    setConfirm(false);
+    setCountdown(null);
     setBusy(true);
     setResult(null);
     try {
@@ -109,6 +134,7 @@ export default function Composer({
       setBusy(false);
     }
   }
+  doSendRef.current = doSend;
 
   return (
     <>
@@ -378,8 +404,16 @@ export default function Composer({
             </div>
           )}
 
-          <button className="btn-send" disabled={busy || errors.length > 0} onClick={attemptSend}>
-            {busy ? 'Sending…' : `Send on ${ENV_META[env].label}`}
+          <button
+            className="btn-send"
+            disabled={busy || countdown !== null || errors.length > 0}
+            onClick={attemptSend}
+          >
+            {countdown !== null
+              ? `Sending in ${countdown}s…`
+              : busy
+                ? 'Sending…'
+                : `Send on ${ENV_META[env].label}`}
           </button>
 
           {result && (
@@ -412,26 +446,55 @@ export default function Composer({
         </div>
       </div>
 
-      {confirm && (
-        <div className="confirm-overlay" onClick={() => setConfirm(false)}>
-          <div className={`confirm-box ${env === 'prod' ? 'prod' : ''}`} onClick={(e) => e.stopPropagation()}>
-            <h3>{env === 'prod' ? 'Send to PRODUCTION?' : 'Confirm broadcast'}</h3>
+      {countdown !== null && (
+        <div className="confirm-overlay" onClick={() => setCountdown(null)}>
+          <div
+            className={`confirm-box countdown-box ${env === 'prod' ? 'prod' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm send"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CountdownRing seconds={countdown} total={SEND_DELAY_S} prod={env === 'prod'} />
+            <h3>Sending in {countdown}s…</h3>
             <p>
-              You&apos;re about to send <b>{AUDIENCE_LABELS[audienceType]}</b> on <b>{ENV_META[env].label}</b>
-              {env === 'prod' && ' — this reaches real users and cannot be undone'}.
+              Going out to <b>{AUDIENCE_LABELS[audienceType]}</b> on <b>{ENV_META[env].label}</b>
+              {env === 'prod' && ' — this reaches real users'}. Cancel now if anything looks off.
             </p>
             <div className="actions">
-              <button className="cancel" onClick={() => setConfirm(false)}>
+              <button className="cancel" onClick={() => setCountdown(null)}>
                 Cancel
               </button>
               <button className="go" onClick={doSend}>
-                Send now
+                Looks good — send it now
               </button>
             </div>
           </div>
         </div>
       )}
     </>
+  );
+}
+
+function CountdownRing({ seconds, total, prod }: { seconds: number; total: number; prod: boolean }) {
+  const R = 52;
+  const C = 2 * Math.PI * R;
+  const offset = C * (1 - seconds / total);
+  return (
+    <div className="countdown-ring">
+      <svg viewBox="0 0 120 120">
+        <circle className="ring-track" cx="60" cy="60" r={R} />
+        <circle
+          className={`ring-prog${prod ? ' prod' : ''}`}
+          cx="60"
+          cy="60"
+          r={R}
+          strokeDasharray={C}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <span className="countdown-num">{seconds}</span>
+    </div>
   );
 }
 

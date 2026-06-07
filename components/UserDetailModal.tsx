@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { relTime, dateTime } from '@/lib/format';
+import ErrorBanner from './ui/ErrorBanner';
+import { relTime, dateTime, toMs } from '@/lib/format';
 import type { UserDetail } from '@/lib/backend';
 
 export default function UserDetailModal({ uid, onClose }: { uid: string; onClose: () => void }) {
   const [d, setD] = useState<UserDetail | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(true);
+  const [nonce, setNonce] = useState(0); // bump to re-fetch (Retry)
 
   // Close on Escape.
   useEffect(() => {
@@ -37,15 +39,15 @@ export default function UserDetailModal({ uid, onClose }: { uid: string; onClose
     return () => {
       alive = false;
     };
-  }, [uid]);
+  }, [uid, nonce]);
 
   return (
     <div className="confirm-overlay" onClick={onClose}>
-      <div className="detail-box" onClick={(e) => e.stopPropagation()}>
+      <div className="detail-box" role="dialog" aria-modal="true" aria-label="User details" onClick={(e) => e.stopPropagation()}>
         <button className="detail-close" onClick={onClose} aria-label="Close">✕</button>
 
         {busy && <p className="empty" style={{ padding: 20 }}>Loading…</p>}
-        {err && <div className="errors">{err}</div>}
+        <ErrorBanner message={err} onRetry={() => setNonce((n) => n + 1)} busy={busy} />
 
         {d && (
           <>
@@ -64,9 +66,9 @@ export default function UserDetailModal({ uid, onClose }: { uid: string; onClose
 
             <div className="detail-grid">
               <div><span>UID</span><code>{d.uid}</code></div>
-              <div><span>Joined</span>{dateTime(d.createdAt)}</div>
-              <div><span>Last seen</span>{relTime(d.lastLoggedInTime)}</div>
-              <div><span>Updated</span>{relTime(d.updatedAt)}</div>
+              <div><span>Joined</span>{dateTime(toMs(d.createdAt))}</div>
+              <div><span>Last seen</span>{relTime(toMs(d.lastLoggedInTime))}</div>
+              <div><span>Updated</span>{relTime(toMs(d.updatedAt))}</div>
             </div>
 
             <h4 className="detail-section">Devices &amp; sessions ({d.sessions.length})</h4>

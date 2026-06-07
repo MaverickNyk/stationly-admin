@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import ViewHeader from './ViewHeader';
+import Toolbar from './ui/Toolbar';
+import ErrorBanner from './ui/ErrorBanner';
 import { relTime } from '@/lib/format';
-import { type EnvName } from '@/lib/env';
 import { GROUP_META } from '@/lib/health/registry';
 import type { CheckResult, CheckStatus, HealthSnapshot, HistoryPoint } from '@/lib/health/types';
 
@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<CheckStatus, string> = {
   skipped: 'Not checked',
 };
 
-export default function HealthDashboard({ env }: { env: EnvName }) {
+export default function HealthDashboard() {
   const [snap, setSnap] = useState<HealthSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
@@ -61,16 +61,16 @@ export default function HealthDashboard({ env }: { env: EnvName }) {
 
   return (
     <div>
-      <ViewHeader env={env}>
+      <Toolbar>
         <button onClick={runNow} disabled={running || busy}>
           {running ? 'Checking…' : '▶ Run check now'}
         </button>
         <button onClick={load} disabled={busy}>
           {busy ? '…' : '↻ Refresh'}
         </button>
-      </ViewHeader>
+      </Toolbar>
 
-      {error && <div className="errors">{error}</div>}
+      <ErrorBanner message={error} onRetry={load} busy={busy} />
 
       <div className="health-summary">
         <span className={`status-dot ${snap?.overall ?? 'skipped'}`} />
