@@ -6,12 +6,12 @@ import SignOutButton from './SignOutButton';
 
 const LINKS = [
   { href: '/', label: 'Dashboard' },
+  { href: '/health', label: 'Health' },
   { href: '/notifications', label: 'Notifications' },
-  { href: '/audiences', label: 'Audiences' },
   { href: '/history', label: 'History' },
   { href: '/users', label: 'Users' },
   { href: '/waitlist', label: 'Waitlist' },
-  { href: '/stations', label: 'Stations' },
+  { href: '/stations', label: 'Subscribed Stations' },
 ];
 
 export default function Nav({ active }: { active: string }) {

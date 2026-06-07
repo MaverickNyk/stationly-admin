@@ -635,3 +635,83 @@ table.history .msg-body { color: var(--muted); font-size: 12px; max-width: 360px
 @media (max-width: 400px) {
   .stat-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Health dashboard ───────────────────────────────────────────── */
+.status-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  flex-shrink: 0; vertical-align: middle; margin-right: 2px;
+  background: var(--muted-2);
+}
+.status-dot.up { background: var(--success); box-shadow: 0 0 6px rgba(74, 222, 128, 0.6); }
+.status-dot.degraded { background: var(--warning); box-shadow: 0 0 6px rgba(255, 176, 32, 0.6); }
+.status-dot.down { background: var(--danger); box-shadow: 0 0 6px rgba(255, 77, 79, 0.6); }
+.status-dot.skipped { background: var(--muted-2); }
+
+.health-summary {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 14px 0 6px; font-size: 15px;
+}
+.health-summary .health-meta { color: var(--muted); font-size: 13px; }
+.health-counts { display: inline-flex; gap: 6px; }
+.health-counts span { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.health-counts .count-down { background: rgba(255, 77, 79, 0.15); color: var(--danger); }
+.health-counts .count-degraded { background: rgba(255, 176, 32, 0.15); color: var(--warning); }
+.health-since { font-size: 11px; color: var(--danger); margin-top: 2px; white-space: nowrap; }
+
+/* Health banner on the Dashboard */
+.health-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 16px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  transition: border-color 0.18s, background 0.18s;
+}
+.health-banner:hover { border-color: var(--muted-2); }
+.health-banner.up { border-color: rgba(74, 222, 128, 0.3); }
+.health-banner.degraded { border-color: rgba(255, 176, 32, 0.4); background: rgba(255, 176, 32, 0.05); }
+.health-banner.down { border-color: rgba(255, 77, 79, 0.45); background: rgba(255, 77, 79, 0.06); }
+.health-banner-counts { display: inline-flex; gap: 6px; }
+.health-banner-counts span { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.health-banner-counts .count-down { background: rgba(255, 77, 79, 0.15); color: var(--danger); }
+.health-banner-counts .count-degraded { background: rgba(255, 176, 32, 0.15); color: var(--warning); }
+.health-banner-meta { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+/* Composer notification templates */
+.templates { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.templates-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted-2); margin-right: 4px; }
+.template-chip {
+  font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px;
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.template-chip:hover { color: var(--text); border-color: var(--muted-2); background: var(--panel); }
+
+.health-card.up { border-color: rgba(74, 222, 128, 0.35); }
+.health-card.degraded { border-color: rgba(255, 176, 32, 0.4); }
+.health-card.down { border-color: rgba(255, 77, 79, 0.45); }
+.health-card .stat-label { display: flex; align-items: center; gap: 6px; }
+.health-card .stat-value { font-size: 18px; }
+
+.health-blurb { display: block; font-size: 12px; font-weight: 400; color: var(--muted-2); margin-top: 4px; }
+
+.health-table-wrap { overflow-x: auto; }
+table.health-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px; }
+table.health-table thead th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted-2);
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+table.health-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.health-table tbody tr:last-child td { border-bottom: 0; }
+table.health-table tbody tr:hover { background: var(--panel-2); }
+.health-ep { font-weight: 600; color: var(--text); }
+.health-path { font-size: 11px; color: var(--muted); word-break: break-all; }
+.health-dim { color: var(--muted); white-space: nowrap; }
+.health-detail { color: var(--muted); font-size: 12px; max-width: 280px; }
+.health-uptime { font-size: 11px; color: var(--muted-2); margin-left: 6px; vertical-align: middle; }
+
+.sparkline { display: inline-flex; gap: 1px; align-items: flex-end; vertical-align: middle; }
+.spark { width: 3px; height: 12px; border-radius: 1px; background: var(--muted-2); }
+.spark.up { background: var(--success); }
+.spark.degraded { background: var(--warning); }
+.spark.down { background: var(--danger); }
+.spark.skipped { background: var(--border); }

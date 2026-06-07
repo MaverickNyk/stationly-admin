@@ -153,3 +153,20 @@ extras `lineId`/`lineName`/`previousStatus`/`newStatus`.
 
 The console composer intentionally exposes only the subset the app dispatcher
 renders meaningfully for an admin push.
+
+---
+
+## Health probing (read-only)
+
+The console's **Health dashboard** (`/health`) does not add backend endpoints —
+it *consumes* the existing surface read-only. A server-side scheduler probes,
+every ~5 min: the liveness root `GET /`; the app-facing `/api/v1/*` endpoints
+above the table lists (with the public `X-Stationly-Key`, params discovered by
+chaining `/modes` → `/lines/mode/:mode` → `/stations/line/:lineId`); the
+`/user/*` routes at their **auth gate** (no Firebase token → expect `401`, no
+side effects); the admin endpoints in this doc; and the StationUI website. The
+**syncer** (no endpoint) is inferred from `/modes`, `/lines/status` and
+`/admin/stats` freshness. `POST /auth/forgot-password` is deliberately not
+probed. Aggregated results are served (session-gated) from the console's own
+`GET /api/admin/health`; `POST` triggers an immediate cycle. See
+`OPERATIONS.md §7b`.

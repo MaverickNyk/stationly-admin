@@ -39,6 +39,9 @@ export interface ResolvedEnv {
   name: EnvName;
   baseUrl: string;
   adminKey?: string;
+  /** The public client key (X-Stationly-Key) — lets health checks probe the
+   * app surface exactly as the app does. Server-only, never shipped. */
+  apiKey?: string;
   cfClientId?: string;
   cfClientSecret?: string;
 }
@@ -49,6 +52,19 @@ const DEFAULT_URLS: Record<EnvName, string> = {
   staging: 'https://staging-api.stationly.co.uk',
   prod: 'https://api.stationly.co.uk',
 };
+
+// Per-env default public website URL (the StationUI marketing site). Used by
+// the health dashboard when WEBSITE_URL is not set explicitly.
+const DEFAULT_WEBSITE_URLS: Record<EnvName, string> = {
+  staging: 'https://staging.stationly.co.uk',
+  prod: 'https://stationly.co.uk',
+};
+
+/** The public website URL this deployment's health dashboard pings. */
+export function websiteUrl(name: EnvName): string {
+  const url = process.env.WEBSITE_URL || DEFAULT_WEBSITE_URLS[name];
+  return url.replace(/\/+$/, '');
+}
 
 /**
  * Resolve the target env to its base URL + secrets. SERVER-ONLY.
@@ -67,6 +83,7 @@ export function resolveEnv(name: EnvName): ResolvedEnv {
     name,
     baseUrl: baseUrl.replace(/\/+$/, ''),
     adminKey: process.env.ADMIN_KEY,
+    apiKey: process.env.STATIONLY_API_KEY,
     cfClientId: process.env.CF_ACCESS_CLIENT_ID,
     cfClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
   };

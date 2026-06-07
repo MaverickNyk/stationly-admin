@@ -246,6 +246,61 @@ Edit `ADMIN_PASSWORD` in `~/stationly-admin/.env`, then `docker compose up -d`.
 
 ---
 
+## 7b. Health dashboard (`/health`)
+
+The console continuously probes the platform from the app's point of view so a
+break is caught before it blocks users. A **server-side scheduler** (started by
+`instrumentation.ts` on boot, `experimental.instrumentationHook`) runs a full
+cycle **every `HEALTHCHECK_INTERVAL_MS` (default 5 min)** — regardless of
+whether anyone has the page open. Results live in an in-memory ring buffer
+(last `HEALTHCHECK_HISTORY` per check, default 24h) for uptime % + status
+strips; history resets on container restart.
+
+What it probes each cycle:
+- **Liveness** — `GET /` (no key) → `{ status: "…Online" }`.
+- **App surface** — the real `/api/v1/*` endpoints the app calls
+  (`/sdui/*`, `/modes`, `/lines/*`, `/stations/*`), attached with the public
+  **`X-Stationly-Key`** (`STATIONLY_API_KEY`) exactly as the app does, with
+  chained param discovery (modes → lines → stations) so params are real.
+- **User-gated routes** — `/user/*`, probed at the auth gate (key, no Firebase
+  token) → expect **401** = route alive, **zero side effects**.
+- **Admin API** — `/admin/stats|users|waitlist|subscribed-stations|history` and
+  the send pipeline (empty `POST` → `400` proves the admin key matches).
+- **Waitlist form** — `POST /api/v1/waitlist/join` (the marketing site's form
+  target, no key) with a malformed body → `400` at validation (no row created).
+- **Syncer** — has no endpoint; **inferred** from whether `/modes`,
+  `/lines/status` and `/admin/stats` caches are populated (the strong "down"
+  signal) and from the newest line-status `lastUpdatedTime` (freshness). Because
+  statuses only re-stamp on change (10-min poll; predictions 30s; station
+  catalogue monthly), extreme staleness is reported `degraded`, never `down`.
+- **TLS certs** — opens a raw TLS socket to the backend + website hosts and
+  flags certs that are expired (`down`) or within `HEALTHCHECK_TLS_WARN_DAYS`
+  (`degraded`) — an expired cert silently blocks the app.
+- **Website** — `GET WEBSITE_URL` → 200.
+
+Cross-cutting: an `up` probe slower than `HEALTHCHECK_SLOW_MS` is downgraded to
+**degraded (slow)**; a `429` is **degraded (rate-limited)**, not down. Each
+check tracks how long it's been in its current state + a consecutive-failure
+count (shown as "since 15m (3×)").
+
+> `POST /auth/forgot-password` is intentionally **not** probed (avoids sending
+> reset emails / tripping its 3-per-15-min limiter).
+
+**Alerting:** set `HEALTH_ALERT_WEBHOOK` to a Slack/Discord/generic incoming
+webhook and the scheduler posts a `{text}` message whenever a check changes
+state (outage + recovery by default; `HEALTH_ALERT_ON_DEGRADED=1` to also alert
+on degraded). It only fires on the *edge* (status change), never repeats every
+cycle, and never alert-storms on boot.
+
+Config (all optional, see `.env.example`): `STATIONLY_API_KEY` (without it the
+app-surface probes show `skipped`), `WEBSITE_URL`, `HEALTHCHECK_INTERVAL_MS`,
+`HEALTHCHECK_TIMEOUT_MS`, `HEALTHCHECK_HISTORY`, `HEALTHCHECK_SEARCH`,
+`HEALTHCHECK_LATLON`, `HEALTHCHECK_SLOW_MS`, `HEALTHCHECK_TLS_WARN_DAYS`,
+`HEALTHCHECK_SYNCER_STALE_MS`. Confirm the scheduler is alive in the container:
+`docker compose logs | grep '\[health\]'` → a "cycle complete" line every ~5 min.
+
+---
+
 ## 8. Troubleshooting
 
 **`403 Invalid admin authorization token`** — console `ADMIN_KEY` ≠ backend

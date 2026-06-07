@@ -15,6 +15,9 @@ import 'server-only';
 import type { SendRequest, SendResult } from './payload';
 import { resolveEnv, type EnvName } from './env';
 
+/** Default per-probe timeout for the health checks (overridable per call). */
+const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
+
 function adminHeaders(env: EnvName): { url: string; headers: Record<string, string> } {
   const cfg = resolveEnv(env);
   if (!cfg.adminKey) {
@@ -198,35 +201,158 @@ export interface UserDetail {
 export const getUserDetail = (env: EnvName, uid: string) =>
   getJson<UserDetail>(env, `/admin/users/${encodeURIComponent(uid)}`);
 
-export interface TokenStats {
-  uid: string;
-  tokenCount: number;
-  deliverable: boolean;
-  cached: boolean;
-  source: 'cache' | 'firestore';
+// ── Health probes ─────────────────────────────────────────────────────
+//
+// Low-level, NON-THROWING, timed requests for the health dashboard. They keep
+// the credentials (admin key, client X-Stationly-Key, CF token) inside this
+// server-only boundary; the caller (lib/health/checks.ts) only ever sees a
+// RawProbe (status code + latency + parsed body), never the secrets. A failed
+// request (timeout, DNS, connection refused) becomes `httpCode: 0` + `error`,
+// never an exception.
+
+export interface RawProbe {
+  /** HTTP status, or 0 when the request never completed (timeout/network). */
+  httpCode: number;
+  latencyMs: number;
+  /** Set when the request never completed. */
+  error?: string;
+  /** Parsed JSON body when the response was JSON (used for chained discovery). */
+  json?: any;
+}
+
+async function timedFetch(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<RawProbe> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const started = Date.now();
+  try {
+    const res = await fetch(url, { ...init, signal: ctrl.signal, cache: 'no-store' });
+    const latencyMs = Date.now() - started;
+    const body = await res.text().catch(() => '');
+    let json: any;
+    try {
+      json = body ? JSON.parse(body) : undefined;
+    } catch {
+      /* non-JSON body — fine, leave json undefined */
+    }
+    return { httpCode: res.status, latencyMs, json };
+  } catch (e: any) {
+    const latencyMs = Date.now() - started;
+    const error =
+      e?.name === 'AbortError'
+        ? `timeout after ${timeoutMs}ms`
+        : (e?.message ?? 'network error');
+    return { httpCode: 0, latencyMs, error };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Whether this env has the public client key configured. */
+export function hasApiKey(env: EnvName): boolean {
+  return Boolean(resolveEnv(env).apiKey);
+}
+
+/** Unauthenticated liveness root: `GET /`. */
+export function probeRoot(env: EnvName, timeoutMs = DEFAULT_PROBE_TIMEOUT_MS): Promise<RawProbe> {
+  const { baseUrl } = resolveEnv(env);
+  return timedFetch(`${baseUrl}/`, { method: 'GET' }, timeoutMs);
 }
 
 /**
- * Look up a uid's registered-device count (count only — never raw tokens).
- * Cache-first on the backend; `fresh` forces a live Firestore read.
+ * Probe a public app endpoint exactly as the app does — attaching the client
+ * `X-Stationly-Key`. `path` is the full `/api/v1`-relative path INCLUDING any
+ * query string (the caller builds it). Returns `httpCode: 0, error` if the key
+ * is unset so the caller can mark it `skipped`.
  */
-export async function getUserTokens(
+export function probePublic(
   env: EnvName,
-  uid: string,
-  fresh?: boolean,
-): Promise<BackendResponse<TokenStats>> {
-  const { url, headers } = adminHeaders(env);
-  const qs = fresh ? '?fresh=1' : '';
-  const res = await fetch(
-    `${url}/api/v1/admin/users/${encodeURIComponent(uid)}/tokens${qs}`,
-    { method: 'GET', headers, cache: 'no-store' },
-  );
-
-  let data: any;
-  try {
-    data = await res.json();
-  } catch {
-    data = { message: await res.text().catch(() => 'Unreadable response') };
+  path: string,
+  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+): Promise<RawProbe> {
+  const cfg = resolveEnv(env);
+  if (!cfg.apiKey) {
+    return Promise.resolve({ httpCode: 0, latencyMs: 0, error: 'STATIONLY_API_KEY not set' });
   }
-  return { ok: res.ok, status: res.status, data };
+  return timedFetch(
+    `${cfg.baseUrl}/api/v1${path}`,
+    { method: 'GET', headers: { 'X-Stationly-Key': cfg.apiKey } },
+    timeoutMs,
+  );
+}
+
+/**
+ * Probe the website waitlist form target (`POST /api/v1/waitlist/join`) — it is
+ * mounted ahead of the X-Stationly-Key middleware (no key) so we send a
+ * malformed body; the controller rejects it with 400 at validation, creating no
+ * row. Confirms the public form endpoint the marketing site posts to is alive.
+ */
+export function probeWaitlistJoin(env: EnvName, timeoutMs = DEFAULT_PROBE_TIMEOUT_MS): Promise<RawProbe> {
+  const { baseUrl } = resolveEnv(env);
+  return timedFetch(
+    `${baseUrl}/api/v1/waitlist/join`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+    timeoutMs,
+  );
+}
+
+/**
+ * Probe a user-auth-gated route at its auth gate: client key present, NO
+ * Firebase bearer. The auth middleware rejects with 401 before the handler, so
+ * this proves the route is mounted and not 5xx-ing with zero side effects.
+ */
+export function probeUserGate(
+  env: EnvName,
+  method: 'GET' | 'POST',
+  path: string,
+  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+): Promise<RawProbe> {
+  const cfg = resolveEnv(env);
+  if (!cfg.apiKey) {
+    return Promise.resolve({ httpCode: 0, latencyMs: 0, error: 'STATIONLY_API_KEY not set' });
+  }
+  const headers: Record<string, string> = { 'X-Stationly-Key': cfg.apiKey };
+  const init: RequestInit = { method, headers };
+  if (method === 'POST') {
+    headers['Content-Type'] = 'application/json';
+    init.body = '{}';
+  }
+  return timedFetch(`${cfg.baseUrl}/api/v1${path}`, init, timeoutMs);
+}
+
+/**
+ * Probe the admin auth + send pipeline: POST an empty body. A 400 means the
+ * backend is up AND the admin key matches (validation rejects the empty body);
+ * 403 = key mismatch, 503 = backend key unset. See OPERATIONS.md §8.
+ */
+export function probeAdminAuth(env: EnvName, timeoutMs = DEFAULT_PROBE_TIMEOUT_MS): Promise<RawProbe> {
+  let cfg: { url: string; headers: Record<string, string> };
+  try {
+    cfg = adminHeaders(env);
+  } catch (e: any) {
+    return Promise.resolve({ httpCode: 0, latencyMs: 0, error: e?.message ?? 'ADMIN_KEY not set' });
+  }
+  return timedFetch(
+    `${cfg.url}/api/v1/admin/notifications/send`,
+    { method: 'POST', headers: cfg.headers, body: '{}' },
+    timeoutMs,
+  );
+}
+
+/** Timed GET against an admin endpoint, carrying the admin key (+ CF token). */
+export function probeAdminGet(
+  env: EnvName,
+  path: string,
+  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+): Promise<RawProbe> {
+  let cfg: { url: string; headers: Record<string, string> };
+  try {
+    cfg = adminHeaders(env);
+  } catch (e: any) {
+    return Promise.resolve({ httpCode: 0, latencyMs: 0, error: e?.message ?? 'ADMIN_KEY not set' });
+  }
+  return timedFetch(`${cfg.url}/api/v1${path}`, { method: 'GET', headers: cfg.headers }, timeoutMs);
 }

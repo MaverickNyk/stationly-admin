@@ -5,6 +5,7 @@ import NotificationPreview from './NotificationPreview';
 import ViewHeader from './ViewHeader';
 import UserPicker from './UserPicker';
 import { TFL_LINES } from '@/lib/lines';
+import { TEMPLATES } from '@/lib/templates';
 import {
   AUDIENCE_LABELS,
   BLAST_AUDIENCES,
@@ -38,7 +39,7 @@ export default function Composer({
   initialUid?: string;
   initialLabel?: string;
 }) {
-  // Prefill when arriving from "Compose to this user" (audiences/users screens).
+  // Prefill when arriving from "Compose to this user" (users screen).
   const [audienceType, setAudienceType] = useState<AudienceType>(initialUid ? 'uid' : 'all');
   const [audienceValue, setAudienceValue] = useState(initialUid ?? '');
   const [pickedLabel, setPickedLabel] = useState(initialLabel ?? '');
@@ -230,6 +231,20 @@ export default function Composer({
 
           <div className="card">
             <h2>Message</h2>
+            <div className="templates">
+              <span className="templates-label">Templates</span>
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="template-chip"
+                  title={t.hint}
+                  onClick={() => set(t.payload)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
             <div className="row">
               <div className="field">
                 <label>Type</label>

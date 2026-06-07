@@ -33,15 +33,19 @@ public mobile API or the marketing website.
 
 - **Dashboard** (`/`) — user/waitlist/subscribed counts, transport cache sizes,
   recent sends, quick actions.
+- **Health** (`/health`) — every backend endpoint the app actually calls,
+  probed server-side **at least every 5 min** (continuously, not just when the
+  page is open), plus the StationUI website and an inferred **syncer** signal.
+  Per-endpoint status/latency/HTTP code + 24h uptime strips.
 - **Notifications** (`/notifications`) — composer with live device preview;
   target by `all`/`line`/`topic`/`token`/`tokens`, or a **user picked by
   email/name** (single or multiple).
-- **Audiences** (`/audiences`) — search a user by email/name/UID → device count.
 - **History** (`/history`) — recent sends from the local audit log.
 - **Users** (`/users`) — searchable list; click a row for full detail (profile,
   devices/sessions, subscribed stations).
 - **Waitlist** (`/waitlist`) — signups, CSV export.
-- **Stations** (`/stations`) — subscribed-station registry by subscriber count.
+- **Subscribed Stations** (`/stations`) — registry of the stations users are
+  actually watching, by subscriber count.
 
 ## Quick start (local dev)
 

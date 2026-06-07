@@ -53,9 +53,37 @@ export default function UsersTable({ env }: { env: EnvName }) {
     );
   }, [items, q]);
 
+  function exportCsv() {
+    const esc = (v: string | number | boolean) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      'email,displayName,uid,loggedIn,emailVerified,stationCount,lastLoggedIn,joined',
+      ...filtered.map((u) =>
+        [
+          u.email,
+          u.displayName,
+          u.uid,
+          u.loggedIn,
+          u.emailVerified,
+          u.stationCount,
+          u.lastLoggedInTime ? new Date(u.lastLoggedInTime).toISOString() : '',
+          u.createdAt ? new Date(u.createdAt).toISOString() : '',
+        ]
+          .map(esc)
+          .join(','),
+      ),
+    ].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([rows], { type: 'text/csv' }));
+    a.download = `users-${env}.csv`;
+    a.click();
+  }
+
   return (
     <div>
       <ViewHeader env={env}>
+        <button onClick={exportCsv} disabled={!filtered.length} title="Download the filtered list as CSV">
+          ⬇ CSV
+        </button>
         <button onClick={() => load(true)} disabled={busy} title="Does one live Firestore read">
           {busy ? '…' : '↻ Refresh (1 read)'}
         </button>

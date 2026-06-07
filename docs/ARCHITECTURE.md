@@ -26,7 +26,7 @@ marketing website.
                 │
 ┌───────────────▼─────────────────────────────────────────────────────┐
 │ Admin Console — Next.js 14, Docker container "stationly-admin" (:4000)│
-│   - pages + UI (dashboard, notifications, audiences, history, users,  │
+│   - pages + UI (dashboard, health, notifications, history, users,     │
 │     waitlist, subscribed stations)                                    │
 │   - /api/* route handlers = the SERVER-SIDE PROXY (holds the secrets) │
 └───────────────┬─────────────────────────────────────────────────────┘
@@ -106,9 +106,20 @@ to keep Firestore I/O at (near) zero:
 | Users list `/admin/users` (normal) | **0** (SQLite slave) |
 | Users list `/admin/users?refresh=1` | **1 collection read**, then re-cached |
 | User detail `/admin/users/:uid` | **0** (cache); rare 1-doc fallback, then cached |
-| Audience lookup `/admin/users/:uid/tokens` & `uid` sends | cache-first, 5-min TTL |
+| `uid`/`uids` sends (token lookup) | **0** (cache-first, 5-min TTL) |
 | Send history `/admin/notifications/history` | **0** (local SQLite audit log) |
 | Notifications `token`/`tokens`/`topic`/`all`/`line` | **0** (FCM fans out) |
+| **Health dashboard** (every 5 min, all probes) | **0** (see below) |
+
+**Health probes & the Firestore budget.** The health scheduler hits real
+endpoints every 5 min but stays at **0 Firestore reads** in steady state: admin
+probes never pass `?refresh=1` (served from cache/SQLite); public probes only
+read Firestore on a *cold-cache miss* (`length === 0 && !cacheReady`); the
+`/lines/status` probe is guarded by the backend's 10-min TTL + change-detection
+so it triggers **~0 Firestore writes** (and the syncer catches real changes
+anyway); user-gated probes 401 at the gate (no handler, no I/O); and the
+waitlist probe is rejected at validation (no write). The only side effect is the
+occasional TfL fetch any app client would also cause.
 
 **Writes:** the console performs **no Firestore writes**. Slave snapshots and the
 send-history audit log are written to **SQLite only**.

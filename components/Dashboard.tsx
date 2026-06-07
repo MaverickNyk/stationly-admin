@@ -6,9 +6,18 @@ import ViewHeader from './ViewHeader';
 import { relTime, num } from '@/lib/format';
 import { ENV_META, type EnvName } from '@/lib/env';
 import type { DashboardStats } from '@/lib/backend';
+import type { HealthSnapshot } from '@/lib/health/types';
+
+const HEALTH_LABEL: Record<string, string> = {
+  up: 'All systems go',
+  degraded: 'Degraded',
+  down: 'Outage',
+  skipped: 'Not checked',
+};
 
 export default function Dashboard({ env }: { env: EnvName }) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [health, setHealth] = useState<HealthSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -16,13 +25,17 @@ export default function Dashboard({ env }: { env: EnvName }) {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch(`/api/admin/data?resource=stats`);
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) setStats(data);
+      const [statsRes, healthRes] = await Promise.all([
+        fetch(`/api/admin/data?resource=stats`),
+        fetch(`/api/admin/health`),
+      ]);
+      const data = await statsRes.json().catch(() => ({}));
+      if (statsRes.ok) setStats(data);
       else {
         setStats(null);
-        setError(data.message || `Failed (${res.status})`);
+        setError(data.message || `Failed (${statsRes.status})`);
       }
+      if (healthRes.ok) setHealth(await healthRes.json().catch(() => null));
     } catch (e: any) {
       setStats(null);
       setError(e?.message ?? 'Network error');
@@ -35,6 +48,9 @@ export default function Dashboard({ env }: { env: EnvName }) {
     load();
   }, [load]);
 
+  const downCount = health?.checks.filter((c) => c.status === 'down').length ?? 0;
+  const degradedCount = health?.checks.filter((c) => c.status === 'degraded').length ?? 0;
+
   return (
     <div>
       <ViewHeader env={env}>
@@ -44,6 +60,22 @@ export default function Dashboard({ env }: { env: EnvName }) {
       </ViewHeader>
 
       {error && <div className="errors">{error}</div>}
+
+      {health && (
+        <Link href="/health" className={`health-banner ${health.overall}`}>
+          <span className={`status-dot ${health.overall}`} />
+          <b>Platform: {HEALTH_LABEL[health.overall] ?? health.overall}</b>
+          {(downCount > 0 || degradedCount > 0) && (
+            <span className="health-banner-counts">
+              {downCount > 0 && <span className="count-down">{downCount} down</span>}
+              {degradedCount > 0 && <span className="count-degraded">{degradedCount} degraded</span>}
+            </span>
+          )}
+          <span className="health-banner-meta">
+            {health.lastCycleAt ? `checked ${relTime(health.lastCycleAt)}` : 'no checks yet'} · view health →
+          </span>
+        </Link>
+      )}
 
       <div className="stat-grid">
         <StatCard label="Users" value={num(stats?.users.total)} sub={`${num(stats?.users.active)} active now`} href="/users" accent />
@@ -87,10 +119,6 @@ export default function Dashboard({ env }: { env: EnvName }) {
             <Link href="/notifications" className="action-tile">
               <b>Send a notification</b>
               <span>Compose &amp; broadcast a push</span>
-            </Link>
-            <Link href="/audiences" className="action-tile">
-              <b>Audience lookup</b>
-              <span>Check a UID&apos;s device count</span>
             </Link>
             <Link href="/users" className="action-tile">
               <b>Browse users</b>
