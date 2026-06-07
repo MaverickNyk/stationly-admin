@@ -12,7 +12,15 @@ set -euo pipefail
 # Prereqs: Docker Desktop running, and `docker login ghcr.io` done once.
 # =============================================================================
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
+
+# Ensure we are on the main branch
+BRANCH="$(git branch --show-current)"
+if [ "$BRANCH" != "main" ]; then
+  echo "❌ Error: publish_image.sh can only be run on the 'main' branch."
+  echo "You are currently on: '$BRANCH'"
+  exit 1
+fi
 
 IMAGE="ghcr.io/mavericknyk/stationly-admin"
 SHA="$(git rev-parse --short HEAD)"
