@@ -25,3 +25,14 @@ export function num(n: number | undefined | null): string {
   if (n == null) return '—';
   return n.toLocaleString();
 }
+
+/**
+ * Coerce a timestamp to epoch-ms, accepting either a number (already ms) or an
+ * ISO string like "2026-06-05T22:29:56.253Z". Returns 0 when unparseable.
+ */
+export function toMs(v: number | string | null | undefined): number {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  const p = Date.parse(v);
+  return Number.isFinite(p) ? p : 0;
+}

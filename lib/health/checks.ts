@@ -183,7 +183,7 @@ async function runCycle(env: EnvName): Promise<void> {
     const lineId = pickField(linesProbe.json, ['id', 'lineId', 'name']) || 'victoria';
     recordSimple(byId(PUBLIC_CHECKS, 'lines-by-mode'), linesProbe, ` (mode=${mode})`);
 
-    const lineStatusProbe = await probePublic(env, `/lines/status?mode=${encodeURIComponent(mode)}`, TIMEOUT_MS);
+    const lineStatusProbe = await probePublic(env, `/lines/status?mode=${encodeURIComponent(mode)}&skipRefresh=true`, TIMEOUT_MS);
     const lineStatusCount = Array.isArray(lineStatusProbe.json) ? lineStatusProbe.json.length : 0;
     recordSimple(byId(PUBLIC_CHECKS, 'line-status'), lineStatusProbe, ` (${lineStatusCount} statuses)`);
 
@@ -229,7 +229,7 @@ async function runCycle(env: EnvName): Promise<void> {
 
     // predictions needs a real naptanId; skip cleanly if discovery didn't find one.
     if (naptanId) {
-      const pred = await probePublic(env, `/stations/predictions/${encodeURIComponent(naptanId)}`, TIMEOUT_MS);
+      const pred = await probePublic(env, `/stations/predictions/${encodeURIComponent(naptanId)}?skipRefresh=true`, TIMEOUT_MS);
       recordSimple(byId(PUBLIC_CHECKS, 'stations-predictions'), pred, ` (${naptanId})`);
     } else {
       record(mkResult(byId(PUBLIC_CHECKS, 'stations-predictions'), { httpCode: 0, latencyMs: 0 }, 'skipped', 'no naptanId discovered (stations/line empty)'));

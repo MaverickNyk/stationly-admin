@@ -13,6 +13,10 @@
 .env.local
 .env*.local
 
+# deploy scripts / keys that carry host, SSH key, admin key, session secret (see README)
+staging_*.sh
+*.pem
+
 # misc
 .DS_Store
 *.tsbuildinfo

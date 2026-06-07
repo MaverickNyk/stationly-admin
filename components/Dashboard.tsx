@@ -1,11 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
-import ViewHeader from './ViewHeader';
-import { relTime, num } from '@/lib/format';
+import Toolbar from './ui/Toolbar';
+import ErrorBanner from './ui/ErrorBanner';
+import GrowthChart from './ui/GrowthChart';
+import { relTime, num, toMs } from '@/lib/format';
+import { useResource } from '@/lib/useResource';
 import { ENV_META, type EnvName } from '@/lib/env';
-import type { DashboardStats } from '@/lib/backend';
+import { GROUP_META } from '@/lib/health/registry';
+import type { DashboardStats, HistoryItem, AdminUser } from '@/lib/backend';
 import type { HealthSnapshot } from '@/lib/health/types';
 
 const HEALTH_LABEL: Record<string, string> = {
@@ -16,82 +20,94 @@ const HEALTH_LABEL: Record<string, string> = {
 };
 
 export default function Dashboard({ env }: { env: EnvName }) {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [health, setHealth] = useState<HealthSnapshot | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // Each panel is its own resource so a single failure is isolated and can be
+  // retried on its own — the rest of the dashboard still renders.
+  const stats = useResource<DashboardStats>('/api/admin/data?resource=stats');
+  const health = useResource<HealthSnapshot>('/api/admin/health');
+  const history = useResource<{ items: HistoryItem[] }>('/api/admin/history?limit=200');
+  const users = useResource<{ items: AdminUser[] }>('/api/admin/data?resource=users');
 
-  const load = useCallback(async () => {
-    setBusy(true);
-    setError('');
-    try {
-      const [statsRes, healthRes] = await Promise.all([
-        fetch(`/api/admin/data?resource=stats`),
-        fetch(`/api/admin/health`),
-      ]);
-      const data = await statsRes.json().catch(() => ({}));
-      if (statsRes.ok) setStats(data);
-      else {
-        setStats(null);
-        setError(data.message || `Failed (${statsRes.status})`);
-      }
-      if (healthRes.ok) setHealth(await healthRes.json().catch(() => null));
-    } catch (e: any) {
-      setStats(null);
-      setError(e?.message ?? 'Network error');
-    } finally {
-      setBusy(false);
+  const busyAny = stats.busy || health.busy || history.busy || users.busy;
+  function reloadAll() {
+    stats.reload();
+    health.reload();
+    history.reload();
+    users.reload();
+  }
+
+  const items = useMemo(() => history.data?.items ?? [], [history.data]);
+  const userTimes = useMemo(
+    () => (users.data?.items ?? []).map((u) => toMs(u.createdAt)),
+    [users.data],
+  );
+
+  // Sends bucketed into the last 7 calendar days (from the local audit log).
+  const trend = useMemo(() => {
+    const days: { label: string; count: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const start = d.getTime();
+      const end = start + 86_400_000;
+      const count = items.filter((h) => h.createdAt >= start && h.createdAt < end).length;
+      days.push({ label: d.toLocaleDateString([], { weekday: 'short' }), count });
     }
-  }, []);
+    return days;
+  }, [items]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const downCount = health?.checks.filter((c) => c.status === 'down').length ?? 0;
-  const degradedCount = health?.checks.filter((c) => c.status === 'degraded').length ?? 0;
+  const s = stats.data;
 
   return (
     <div>
-      <ViewHeader env={env}>
-        <button onClick={load} disabled={busy}>
-          {busy ? '…' : '↻ Refresh'}
+      <Toolbar>
+        <button onClick={reloadAll} disabled={busyAny}>
+          {busyAny ? '…' : '↻ Refresh'}
         </button>
-      </ViewHeader>
+      </Toolbar>
 
-      {error && <div className="errors">{error}</div>}
+      {/* ── Platform health — the headline of the dashboard ──────────── */}
+      <HealthSummary
+        snap={health.data}
+        busy={health.busy}
+        error={health.error}
+        onRetry={() => health.reload()}
+      />
 
-      {health && (
-        <Link href="/health" className={`health-banner ${health.overall}`}>
-          <span className={`status-dot ${health.overall}`} />
-          <b>Platform: {HEALTH_LABEL[health.overall] ?? health.overall}</b>
-          {(downCount > 0 || degradedCount > 0) && (
-            <span className="health-banner-counts">
-              {downCount > 0 && <span className="count-down">{downCount} down</span>}
-              {degradedCount > 0 && <span className="count-degraded">{degradedCount} degraded</span>}
-            </span>
-          )}
-          <span className="health-banner-meta">
-            {health.lastCycleAt ? `checked ${relTime(health.lastCycleAt)}` : 'no checks yet'} · view health →
-          </span>
-        </Link>
-      )}
-
+      {/* ── Counts ───────────────────────────────────────────────────── */}
+      <ErrorBanner message={stats.error} onRetry={() => stats.reload()} busy={stats.busy} />
       <div className="stat-grid">
-        <StatCard label="Users" value={num(stats?.users.total)} sub={`${num(stats?.users.active)} active now`} href="/users" accent />
-        <StatCard label="Waitlist" value={num(stats?.waitlist.total)} sub="signups" href="/waitlist" accent />
-        <StatCard label="Subscribed stations" value={num(stats?.subscribedStations)} sub="being watched" href="/stations" accent />
-        <StatCard label="Stations" value={num(stats?.transport.stations)} sub="in cache" />
-        <StatCard label="Lines" value={num(stats?.transport.lines)} sub="in cache" />
-        <StatCard label="Modes" value={num(stats?.transport.modes)} sub="in cache" />
+        <StatCard label="Users" value={num(s?.users.total)} sub={`${num(s?.users.active)} active now`} href="/users" accent />
+        <StatCard label="Waitlist" value={num(s?.waitlist.total)} sub="signups" href="/waitlist" accent />
+        <StatCard label="Subscribed stations" value={num(s?.subscribedStations)} sub="being watched" href="/stations" accent />
+        <StatCard label="Stations" value={num(s?.transport.stations)} sub="in cache" />
+        <StatCard label="Lines" value={num(s?.transport.lines)} sub="in cache" />
+        <StatCard label="Modes" value={num(s?.transport.modes)} sub="in cache" />
+      </div>
+
+      <div className="card" style={{ marginTop: 8, marginBottom: 8 }}>
+        <h2>User growth</h2>
+        {users.error ? (
+          <ErrorBanner message={users.error} onRetry={() => users.reload()} busy={users.busy} />
+        ) : (
+          <GrowthChart times={userTimes} />
+        )}
       </div>
 
       <div className="grid" style={{ marginTop: 8 }}>
         <div className="card">
-          <h2>Recent sends</h2>
-          {stats?.recentNotifications?.length ? (
+          <h2>Sends · last 7 days</h2>
+          {history.error ? (
+            <ErrorBanner message={history.error} onRetry={() => history.reload()} busy={history.busy} />
+          ) : (
+            <SendsTrend days={trend} />
+          )}
+
+          <h2 style={{ marginTop: 22 }}>Recent sends</h2>
+          {s?.recentNotifications?.length ? (
             <ul className="feed">
-              {stats.recentNotifications.map((n) => (
+              {s.recentNotifications.map((n) => (
                 <li key={n.id}>
                   <span className={`feed-dot ${n.ok ? 'ok' : 'fail'}`} />
                   <div className="feed-body">
@@ -125,13 +141,90 @@ export default function Dashboard({ env }: { env: EnvName }) {
               <span>Profiles, sessions, stations</span>
             </Link>
           </div>
-          {stats && (
+          {s && (
             <p className="empty" style={{ marginTop: 14 }}>
-              Users data {stats.users.refreshedAt ? `refreshed ${relTime(stats.users.refreshedAt)}` : 'not loaded yet'} · served from local cache (0 Firestore reads)
+              Users data {s.users.refreshedAt ? `refreshed ${relTime(s.users.refreshedAt)}` : 'not loaded yet'} · served from local cache (0 Firestore reads)
             </p>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function HealthSummary({
+  snap,
+  busy,
+  error,
+  onRetry,
+}: {
+  snap: HealthSnapshot | null;
+  busy: boolean;
+  error: string;
+  onRetry: () => void;
+}) {
+  if (error) return <ErrorBanner message={error} onRetry={onRetry} busy={busy} />;
+  if (!snap) return <div className="health-banner skeleton-banner" aria-busy="true">Checking platform health…</div>;
+
+  const downCount = snap.checks.filter((c) => c.status === 'down').length;
+  const degradedCount = snap.checks.filter((c) => c.status === 'degraded').length;
+
+  return (
+    <section className="health-summary-block">
+      <Link href="/health" className={`health-banner ${snap.overall}`}>
+        <span className={`status-dot ${snap.overall}`} />
+        <b>Platform: {HEALTH_LABEL[snap.overall] ?? snap.overall}</b>
+        {(downCount > 0 || degradedCount > 0) && (
+          <span className="health-banner-counts">
+            {downCount > 0 && <span className="count-down">{downCount} down</span>}
+            {degradedCount > 0 && <span className="count-degraded">{degradedCount} degraded</span>}
+          </span>
+        )}
+        <span className="health-banner-meta">
+          {snap.lastCycleAt ? `checked ${relTime(snap.lastCycleAt)}` : 'no checks yet'} · view health →
+        </span>
+      </Link>
+
+      <div className="svc-grid">
+        {GROUP_META.map((g) => {
+          const r = snap.rollups.find((x) => x.group === g.group);
+          const status = r?.status ?? 'skipped';
+          return (
+            <Link href="/health" key={g.group} className={`svc-chip ${status}`} title={g.blurb}>
+              <span className={`status-dot ${status}`} />
+              <span className="svc-name">{g.label}</span>
+              <span className="svc-count">{r ? `${r.up}/${r.total}` : '—'}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SendsTrend({ days }: { days: { label: string; count: number }[] }) {
+  const max = Math.max(1, ...days.map((d) => d.count));
+  const total = days.reduce((sum, d) => sum + d.count, 0);
+  return (
+    <div>
+      <div className="trend">
+        {days.map((d, i) => (
+          <div
+            key={i}
+            className={`trend-bar${d.count === 0 ? ' empty' : ''}`}
+            style={{ height: `${Math.max(4, Math.round((d.count / max) * 100))}%` }}
+            title={`${d.label}: ${d.count} send${d.count === 1 ? '' : 's'}`}
+          />
+        ))}
+      </div>
+      <div className="trend-axis">
+        {days.map((d, i) => (
+          <span key={i}>{d.label[0]}</span>
+        ))}
+      </div>
+      <p className="empty" style={{ marginTop: 6 }}>
+        {total} send{total === 1 ? '' : 's'} in the last 7 days
+      </p>
     </div>
   );
 }
