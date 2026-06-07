@@ -16,7 +16,7 @@ public mobile API or the marketing website.
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, the server-side key proxy, security layers, env model, the master→slave→cache data model & Firestore read/write budget, SDUI note |
 | [docs/API.md](docs/API.md) | Backend `/api/v1/admin/*` reference — every endpoint, payloads, read costs |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Runbook — config, deploy, nginx+TLS, pm2, rotating secrets, troubleshooting, local dev |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Runbook — config, build/deploy (Docker→GHCR→Actions), nginx+TLS, rotating secrets, troubleshooting, local dev |
 | [CLOUDFLARE_ACCESS.md](CLOUDFLARE_ACCESS.md) | Locking it down: Cloudflare Access apps + origin firewall |
 
 ## At a glance
@@ -47,7 +47,7 @@ public mobile API or the marketing website.
 
 ```bash
 cd admin-console
-cp .env.local.example .env.local   # set ADMIN_PASSWORD, SESSION_SECRET, STAGING_ADMIN_KEY
+cp .env.example .env.local         # set ADMIN_PASSWORD, SESSION_SECRET, ADMIN_KEY
 npm install
 npm run dev                        # http://localhost:4000
 ```

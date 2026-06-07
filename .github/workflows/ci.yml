@@ -1,0 +1,33 @@
+name: CI
+
+# Quality gate — compiles/lints/builds the app on every push & PR.
+# Runs on GitHub's amd64 runners; this only verifies the code, it never ships
+# an image (release builds happen locally on arm64). See docs/OPERATIONS.md.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

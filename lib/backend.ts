@@ -18,7 +18,7 @@ import { resolveEnv, type EnvName } from './env';
 function adminHeaders(env: EnvName): { url: string; headers: Record<string, string> } {
   const cfg = resolveEnv(env);
   if (!cfg.adminKey) {
-    throw new Error(`No admin key configured for "${env}" (set ${env.toUpperCase()}_ADMIN_KEY).`);
+    throw new Error(`No admin key configured for "${env}" (set ADMIN_KEY).`);
   }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

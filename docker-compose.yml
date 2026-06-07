@@ -1,0 +1,34 @@
+# =============================================================================
+# Stationly Admin Console — runtime stack (per VM)
+# -----------------------------------------------------------------------------
+# Single container: the Next.js standalone server, published on 127.0.0.1:4000.
+# The HOST's nginx terminates TLS and reverse-proxies to it (deploy/nginx-*.conf),
+# reusing the existing Let's Encrypt cert. nginx already owns :80/:443 on this
+# VM (it also serves the backend + web), so we do NOT run our own proxy here.
+#
+# The image is config-free; the per-VM `.env` (gitignored, next to this file)
+# injects STATIONLY_ENV + that environment's secrets at start. Same image runs
+# on staging and prod. See docs/OPERATIONS.md.
+#
+# ADMIN_TAG selects which GHCR image to run (the tag pushed by release.sh).
+# REQUIRED — compose errors if it's unset (no silent fallback to a stale image).
+# The deploy GitHub Action sets it per run.
+#
+# Usage on a VM:   ADMIN_TAG=<tag> docker compose pull && docker compose up -d
+# =============================================================================
+
+services:
+  admin:
+    image: ghcr.io/mavericknyk/stationly-admin:${ADMIN_TAG:?ADMIN_TAG must be set (the image tag from release.sh)}
+    restart: unless-stopped
+    # All app config + secrets injected here — nothing baked into the image.
+    env_file: .env
+    # Bound to localhost only; the host's nginx is the public entry point.
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

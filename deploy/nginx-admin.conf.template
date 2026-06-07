@@ -1,0 +1,49 @@
+# Stationly Admin Console — nginx reverse proxy TEMPLATE (env-agnostic).
+# The console runs as a Docker container on 127.0.0.1:4000; nginx terminates
+# TLS (reusing that host's existing Let's Encrypt cert) and proxies to it.
+#
+# ONE-TIME manual install on the VM (deploy.sh deliberately does NOT do this —
+# it only ships the container). Replace DOMAIN with the host, e.g.
+# staging-admin.stationly.co.uk:
+#
+#   DOMAIN=staging-admin.stationly.co.uk
+#   sed "s/\${ADMIN_DOMAIN}/$DOMAIN/g" nginx-admin.conf.template \
+#     | sudo tee /etc/nginx/sites-available/$DOMAIN > /dev/null
+#   sudo ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# (A TLS cert for $DOMAIN must already exist under /etc/letsencrypt/live/$DOMAIN/.)
+
+upstream stationly_admin {
+    server 127.0.0.1:4000;
+}
+
+server {
+    listen 80;
+    server_name ${ADMIN_DOMAIN};
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    server_name ${ADMIN_DOMAIN};
+    listen 443 ssl;
+
+    ssl_certificate     /etc/letsencrypt/live/${ADMIN_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${ADMIN_DOMAIN}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Keep it out of search indexes (defence in depth on top of access control).
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    location / {
+        proxy_pass http://stationly_admin;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

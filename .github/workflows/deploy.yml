@@ -1,0 +1,48 @@
+name: Deploy
+run-name: Deploy ${{ inputs.tag }} → ${{ inputs.environment }}
+
+# Manual only — you trigger it from the Actions tab, per environment.
+# Build & push happen locally (release.sh); this job only pulls + runs the
+# already-pushed image on the target VM, so staging and prod run the SAME image.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, prod]
+        required: true
+      tag:
+        description: Image tag from release.sh (e.g. 20260607-1430-03cfc58)
+        required: true
+
+# Serialize deploys per environment so two runs can't race on the same VM.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Scopes secrets per env + lets you require manual approval on prod
+    # (Settings → Environments → prod → Required reviewers).
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Deploy ${{ inputs.tag }} to ${{ inputs.environment }} VM
+        # Pinned to the v1.2.0 commit SHA (a tag can be moved; a SHA can't).
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd ~/stationly-admin
+            export ADMIN_TAG='${{ inputs.tag }}'
+            docker compose pull
+            docker compose up -d
+            sleep 5
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:4000/login || echo 000)
+            echo "health check: HTTP $code"
+            test "$code" = "200"

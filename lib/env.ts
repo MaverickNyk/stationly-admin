@@ -43,23 +43,31 @@ export interface ResolvedEnv {
   cfClientSecret?: string;
 }
 
-// Defaults mirror AppConfig.kt; overridable via env for flexibility.
+// Per-env default backend URL (mirrors AppConfig.kt). Used only when the flat
+// BACKEND_URL is not set — each VM normally sets BACKEND_URL explicitly.
 const DEFAULT_URLS: Record<EnvName, string> = {
-  staging: process.env.STAGING_BACKEND_URL || 'https://staging-api.stationly.co.uk',
-  prod: process.env.PROD_BACKEND_URL || 'https://api.stationly.co.uk',
+  staging: 'https://staging-api.stationly.co.uk',
+  prod: 'https://api.stationly.co.uk',
 };
 
 /**
- * Resolve a target env to its base URL + secrets. Per-env vars take the form
- * STAGING_ADMIN_KEY / PROD_ADMIN_KEY, etc. SERVER-ONLY.
+ * Resolve the target env to its base URL + secrets. SERVER-ONLY.
+ *
+ * Config is FLAT and un-prefixed: each deployment (VM/container) carries only
+ * its own environment's values in its `.env`, so there is nothing to
+ * disambiguate. The file that's present IS the environment.
+ *   BACKEND_URL · ADMIN_KEY · CF_ACCESS_CLIENT_ID · CF_ACCESS_CLIENT_SECRET
+ *
+ * `STATIONLY_ENV` (read by activeEnv) stays explicit — it drives the safety
+ * banner/tone, not secret lookup.
  */
 export function resolveEnv(name: EnvName): ResolvedEnv {
-  const prefix = name === 'prod' ? 'PROD' : 'STAGING';
+  const baseUrl = process.env.BACKEND_URL || DEFAULT_URLS[name];
   return {
     name,
-    baseUrl: DEFAULT_URLS[name].replace(/\/+$/, ''),
-    adminKey: process.env[`${prefix}_ADMIN_KEY`],
-    cfClientId: process.env[`${prefix}_CF_ACCESS_CLIENT_ID`],
-    cfClientSecret: process.env[`${prefix}_CF_ACCESS_CLIENT_SECRET`],
+    baseUrl: baseUrl.replace(/\/+$/, ''),
+    adminKey: process.env.ADMIN_KEY,
+    cfClientId: process.env.CF_ACCESS_CLIENT_ID,
+    cfClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
   };
 }

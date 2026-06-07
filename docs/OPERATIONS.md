@@ -1,192 +1,305 @@
 # Admin Console — Operations Runbook
 
-Canonical runbook for deploying and operating the admin console. No secrets in
-this file — placeholders: `<STAGING_HOST>` (the staging server),
+Canonical runbook for building, deploying, and operating the admin console.
+No secrets in this file — placeholders: `<VM_HOST>` (a server),
 `<SSH_KEY>` (path to the deploy SSH key), `<ADMIN_KEY>`, `<PASSWORD>`.
 
-The deploy scripts (`staging_deploy.sh`, `.scripts/staging_deploy.sh`) are
-**gitignored** by repo convention (`staging_*.sh`) because they carry the host
-and key path. They live only on operators' machines.
+The console ships as a **Docker image**. You build & test it locally, push it to
+**GitHub Container Registry (GHCR)**, and deploy by triggering a **GitHub
+Action** that pulls the *same image* onto the target VM. The host's **nginx**
+terminates TLS and proxies to the container; **Cloudflare Access** gates the
+login.
 
 ---
 
-## 1. Config — `admin-console/.env.local` (gitignored)
+## 1. Architecture & request flow
+
+```
+Build (your Mac, arm64)         Registry                Each VM
+─────────────────────           ────────                ───────────────────────────
+release.sh: docker build  ──►   ghcr.io/mavericknyk/    docker compose pull <tag>
+            docker push         stationly-admin:<tag>   docker compose up -d
+                                                        └─ container on 127.0.0.1:4000
+
+Public request path:
+  team member ─► Cloudflare Access (OTP, email allowlist)
+              ─► nginx :443 (existing Let's Encrypt cert)  ─► container :4000
+              ─► console password ─► server-side admin-key proxy ─► backend API
+```
+
+Three independent layers protect it: **Cloudflare Access → console password →
+server-side admin-key proxy**. The VMs are **arm64**, so images are built on the
+arm64 Mac (the GitHub runner is amd64 and only *deploys*, never builds).
+
+- **Staging VM:** `79.72.94.209` (`stationly-be`) — shared with the backend.
+- **Prod VM:** separate host (set up when prod goes live).
+
+---
+
+## 2. Config — the per-VM `.env` (flat, gitignored)
+
+Config is **flat and un-prefixed**: each VM's `.env` holds only its own
+environment's values. The file that's present *is* the environment. Template:
+`.env.example`.
 
 ```ini
-STATIONLY_ENV=staging                 # staging | production (fixes the target env)
+STATIONLY_ENV=staging                 # staging | production — drives the safety banner
 ADMIN_PASSWORD=<PASSWORD>             # console login
 SESSION_SECRET=<random hex>          # openssl rand -hex 32  (signs the session cookie)
-STAGING_BACKEND_URL=https://staging-api.stationly.co.uk   # optional; default is this
-STAGING_ADMIN_KEY=<ADMIN_KEY>        # MUST equal the backend's staging STATIONLY_ADMIN_KEY
-# Once Cloudflare Access gates the admin API path:
-STAGING_CF_ACCESS_CLIENT_ID=…
-STAGING_CF_ACCESS_CLIENT_SECRET=…
+BACKEND_URL=https://staging-api.stationly.co.uk   # backend this console targets
+ADMIN_KEY=<ADMIN_KEY>                # MUST equal the backend's STATIONLY_ADMIN_KEY
+# Only if the backend's /admin/* API is gated behind Cloudflare Access:
+CF_ACCESS_CLIENT_ID=
+CF_ACCESS_CLIENT_SECRET=
 ```
 
-Production uses the `PROD_*` equivalents and `STATIONLY_ENV=production`.
+- Lives on the VM at `~/stationly-admin/.env`, **chmod 600**, never committed.
+- The image is config-free; compose injects this file at container start
+  (`env_file: .env`).
+- **Golden rule:** `ADMIN_KEY` (console) must equal `STATIONLY_ADMIN_KEY`
+  (backend) for the same environment, or you get `403 Invalid admin
+  authorization token`.
 
-> **Golden rule:** `STAGING_ADMIN_KEY` (console) must equal `STATIONLY_ADMIN_KEY`
-> (backend) for the same environment. If they drift you get
-> `403 Invalid admin authorization token`.
-
-### Where the live values actually run
-Editing `.env.local` changes **nothing live** until you redeploy. The running
-processes read:
-- Console → `~/stationly-admin/.env.production` (written by the deploy script)
-- Backend → `~/stationly-backend/.env` (written by the backend deploy script)
-
----
-
-## 2. First-time setup (once per environment)
-
-1. **Deploy the backend first** so the `/admin/*` routes exist (otherwise the
-   console's data screens return `Missing 'X-Stationly-Key'`).
-2. **DNS:** add a **proxied** record `staging-admin.stationly.co.uk → <STAGING_HOST>`.
-3. **Deploy the console** (section 3).
-4. **nginx + TLS** (section 4).
-5. **pm2 reboot persistence** (section 5).
-6. **Cloudflare Access** before sharing the URL — see `../CLOUDFLARE_ACCESS.md`.
+> Editing `.env` changes nothing live until you `docker compose up -d` (the
+> deploy Action does this). To apply a secret change without a new image:
+> edit `~/stationly-admin/.env` on the VM, then `cd ~/stationly-admin &&
+> docker compose up -d`.
 
 ---
 
-## 3. Deploy
+## 3. Day-to-day: release & deploy
+
+### 3a. Build, test, push (local — `release.sh`)
 
 ```bash
-# Backend (also serves the mobile API; graceful pm2 reload + health check)
-cd stationly-backend && ./.scripts/staging_deploy.sh
-
-# Console (standalone bundle → pm2 "stationly-admin" on :4000)
-cd stationly-backend/admin-console && ./staging_deploy.sh
+# fast inner loop (no Docker): npm run dev → http://localhost:4000
+./release.sh          # builds ghcr.io/...:<tag>, prompts you, pushes on "y"
 ```
+`release.sh` tags the image `<UTC-datetime>-<git-sha>` (e.g.
+`20260607-1430-03cfc58`, plus `-dirty` if the tree has uncommitted changes),
+also moves `:latest`, lets you test that exact image (`docker run --env-file
+.env.local -p 4000:4000 …`), and pushes to GHCR only if you confirm. It prints
+the `<tag>` to deploy.
 
-The website deploy script (`StationlyUI/staging_deploy.sh`) also chains the
-console deploy at the end; `--web-only` skips it.
+### 3b. Deploy (GitHub Action — manual)
 
-What the console deploy does: builds the Next standalone bundle, folds in
-`static`/`public`, writes a chmod-600 `.env.production` on the server (from
-`.env.local`, forcing the real backend URL), restarts the `stationly-admin` pm2
-process, and health-checks `http://127.0.0.1:4000/login`.
+**GitHub → Actions → "Deploy" → Run workflow**, then choose:
+- **environment:** `staging` or `prod`
+- **tag:** the tag `release.sh` printed (e.g. `20260607-1430-03cfc58` — UTC build time + commit)
+
+The Action SSHes to that VM and runs `docker compose pull && docker compose up
+-d` for the tag, then health-checks `127.0.0.1:4000/login`.
+
+### 3c. Promote staging → prod
+
+```
+Run workflow → staging, tag=20260607-1430-03cfc58   → verify on staging-admin.stationly.co.uk
+Run workflow → prod,    tag=20260607-1430-03cfc58   → prod pulls the SAME image (identical bytes)
+```
+Same `<tag>` both times = prod runs exactly what you verified on staging.
+
+### 3d. Rollback
+
+Re-run the Deploy Action with an **older `<tag>`** that's still in GHCR. No
+rebuild needed.
 
 ---
 
-## 4. nginx + TLS (once)
+## 4. First-time setup per VM (once)
 
-⚠️ The committed `deploy/nginx-staging-admin.conf` is the *final* (HTTPS) shape.
-Because it declares `listen 443 ssl` before a cert exists, the first `nginx -t`
-would fail. Use **HTTP-only first, let certbot add HTTPS**:
+1. **Backend first** so `/admin/*` routes exist (else data screens return
+   `Missing 'X-Stationly-Key'`).
+2. **DNS:** proxied (orange-cloud) record `staging-admin.stationly.co.uk →
+   <VM_HOST>` (prod: `admin.stationly.co.uk`).
+3. **Docker:**
+   ```bash
+   curl -fsSL https://get.docker.com | sudo sh
+   sudo usermod -aG docker $USER && newgrp docker
+   docker compose version    # confirm the compose plugin is present
+   ```
+4. **GHCR login** (so the VM can pull the private image):
+   ```bash
+   echo <GHCR_READ_PAT> | docker login ghcr.io -u MaverickNyk --password-stdin
+   ```
+   (`<GHCR_READ_PAT>` = a GitHub PAT with `read:packages`.)
+5. **App dir + env:**
+   ```bash
+   mkdir -p ~/stationly-admin
+   nano ~/stationly-admin/.env      # fill from .env.example
+   chmod 600 ~/stationly-admin/.env
+   ```
+   Copy `docker-compose.yml` into `~/stationly-admin/` (the Deploy Action
+   expects it there; the first deploy assumes it exists).
+6. **nginx site** (TLS via the host's existing Let's Encrypt cert). A cert for
+   the domain must already exist under `/etc/letsencrypt/live/<domain>/` (certbot
+   auto-renews it). Install the site — file named `stationly-admin`,
+   generic except the domain:
+   ```bash
+   DOMAIN=staging-admin.stationly.co.uk
+   sudo tee /etc/nginx/sites-available/stationly-admin > /dev/null <<EOF
+   upstream stationly_admin { server 127.0.0.1:4000; }
+   server {
+       listen 80;
+       server_name ${DOMAIN};
+       location / { return 301 https://\$host\$request_uri; }
+   }
+   server {
+       server_name ${DOMAIN};
+       listen 443 ssl;
+       ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+       ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+       include /etc/letsencrypt/options-ssl-nginx.conf;
+       ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+       add_header X-Robots-Tag "noindex, nofollow" always;
+       location / {
+           proxy_pass http://stationly_admin;
+           proxy_http_version 1.1;
+           proxy_set_header Host \$host;
+           proxy_set_header X-Real-IP \$remote_addr;
+           proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto \$scheme;
+           proxy_set_header Upgrade \$http_upgrade;
+           proxy_set_header Connection "upgrade";
+       }
+   }
+   EOF
+   sudo ln -sf /etc/nginx/sites-available/stationly-admin /etc/nginx/sites-enabled/stationly-admin
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   (Reference template: `deploy/nginx-admin.conf.template`.)
+7. **Cloudflare Access** before sharing the URL — section 6.
 
+Auto-restart on reboot is handled by the container's `restart: unless-stopped`
+— no pm2.
+
+---
+
+## 5. GitHub setup (GHCR + the Deploy Action)
+
+### 5a. Local push auth (your Mac, once)
 ```bash
-# [server] put an HTTP-only block first (proxy in the :80 server), enable it:
-sudo ln -s /etc/nginx/sites-available/staging-admin.stationly.co.uk /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-# certbot obtains the cert AND rewrites the file to add the 443 block + redirect:
-sudo certbot --nginx -d staging-admin.stationly.co.uk
-sudo nginx -t && sudo systemctl reload nginx
+echo <GHCR_WRITE_PAT> | docker login ghcr.io -u MaverickNyk --password-stdin
 ```
+`<GHCR_WRITE_PAT>` = a GitHub PAT with `write:packages` (and `read:packages`).
 
-The minimal HTTP-only block (proxy to the Next process):
-```nginx
-upstream stationly_admin { server 127.0.0.1:4000; }
-server {
-    listen 80;
-    server_name staging-admin.stationly.co.uk;
-    add_header X-Robots-Tag "noindex, nofollow" always;
-    location / {
-        proxy_pass http://stationly_admin;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-Cloudflare note: keep the zone SSL/TLS mode at **Full (strict)**; certbot's
-HTTP-01 challenge passes through Cloudflare on :80.
+### 5b. Environments + secrets
+**Settings → Environments** → create `staging` and `prod`. On each, add secrets:
+
+| Secret | Value |
+|--------|-------|
+| `SSH_HOST` | the VM IP (staging: `79.72.94.209`) |
+| `SSH_USER` | `ubuntu` |
+| `SSH_KEY`  | the **private** SSH deploy key contents |
+
+Optionally set **Required reviewers** on `prod` to gate prod deploys behind a
+manual approval click.
+
+> GHCR image visibility is private by default — that's why each VM needs the
+> `read:packages` login in step 4.4.
 
 ---
 
-## 5. pm2 reboot persistence (once)
+## 6. Cloudflare Access (the login wall)
 
-```bash
-pm2 save
-pm2 startup   # run the sudo line it prints, then: pm2 save
-```
-Both `stationly-admin` and `stationly-backend` then auto-resurrect on reboot.
+Full guide: `../CLOUDFLARE_ACCESS.md`. The console's piece (App #1):
+
+1. **Zero Trust → Settings → Authentication:** One-time PIN is the default
+   login method (no setup needed); add Google for SSO if you want.
+2. **Access controls → Applications → Add → Self-hosted:**
+   - Destination (Public hostname): `staging-admin.stationly.co.uk`
+     (and `admin.stationly.co.uk` for prod — one app can cover both)
+   - Policy: **Allow**, **Include → Emails →** your allowlist.
+3. Verify in incognito: the URL shows the Cloudflare OTP wall before the console.
+
+> OTP refuses non-allowlisted emails **after** the code step (not at email entry
+> — that's by design, to avoid leaking which emails are valid).
+>
+> **Origin lockdown (recommended):** Access only protects traffic *through*
+> Cloudflare; the raw VM IP is a back door. Lock `:80/:443` to Cloudflare IP
+> ranges (`CLOUDFLARE_ACCESS.md` §5) — carefully, since the backend shares the
+> staging VM (don't lock out the mobile API or SSH).
 
 ---
 
-## 6. Rotating secrets
+## 7. Rotating secrets
 
 ### Admin key (must change on BOTH sides)
 ```bash
 NEW=$(openssl rand -hex 32)
-# backend: set STATIONLY_ADMIN_KEY=$NEW in stationly-backend/.env  → redeploy backend
-# console: set STAGING_ADMIN_KEY=$NEW in admin-console/.env.local  → redeploy console
+# backend: set STATIONLY_ADMIN_KEY=$NEW → redeploy backend
+# console: set ADMIN_KEY=$NEW in ~/stationly-admin/.env on the VM, then:
+cd ~/stationly-admin && docker compose up -d        # picks up the new env
 ```
-(For a quick rotation you can patch `~/stationly-backend/.env` on the server and
-`pm2 reload stationly-backend --update-env`, but keep the local `.env` in sync
-so the next full deploy doesn't revert it.) If the same value is used for prod
-(GitHub secret `STATIONLY_ADMIN_KEY`), rotate that too and redeploy prod.
+For a full release instead, set it in the VM `.env` and re-run the Deploy Action.
 
 ### Session secret (console only)
 ```bash
-openssl rand -hex 32   # → SESSION_SECRET in .env.local → redeploy console
+openssl rand -hex 32   # → SESSION_SECRET in the VM ~/stationly-admin/.env → docker compose up -d
 ```
 Changing it logs everyone out.
 
 ### Console password
-Edit `ADMIN_PASSWORD` in `admin-console/.env.local`, **save**, then redeploy.
+Edit `ADMIN_PASSWORD` in `~/stationly-admin/.env`, then `docker compose up -d`.
+
+> Env changes take effect on the next `docker compose up -d` — no rebuild needed
+> (env is injected at container start, not baked into the image).
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
-**`403 Invalid admin authorization token`** — the console's `STAGING_ADMIN_KEY`
-≠ the backend's `STATIONLY_ADMIN_KEY`. Verify the console key against staging
-before deploying:
+**`403 Invalid admin authorization token`** — console `ADMIN_KEY` ≠ backend
+`STATIONLY_ADMIN_KEY`. Verify against staging before deploying:
 ```bash
-K=$(grep '^STAGING_ADMIN_KEY=' admin-console/.env.local | cut -d= -f2-)
+K=$(grep '^ADMIN_KEY=' ~/stationly-admin/.env | cut -d= -f2-)
 curl -s -o /dev/null -w "%{http_code}\n" -X POST https://staging-api.stationly.co.uk/api/v1/admin/notifications/send \
   -H "Authorization: Bearer $K" -H 'Content-Type: application/json' -d '{}'
-# 400 = keys match (good) · 403 = mismatch (fix before deploying)
+# 400 = keys match (good) · 403 = mismatch
 ```
 
-**Password/secret change "not taking"** — two causes: (a) the value wasn't
-**saved** to `.env.local`, or (b) you didn't **redeploy** (the server runs from
-`.env.production`, regenerated only at deploy time). Don't paste an old full copy
-over `.env.local` — it can silently revert the key/secret.
-
-**`Missing 'X-Stationly-Key'`** on the data screens — the staging **backend**
-predates the `/admin/*` routes. Redeploy the backend.
-
-**Redirect to `https://localhost:4000/…`** — proxy/host issue; `middleware.ts`
-builds redirects from the forwarded host. Ensure nginx sends `Host $host` (it
-does in the provided config).
-
-**`502 Bad Gateway`** — the Next process isn't up / wrong port:
+**Container health / status:**
 ```bash
-pm2 status stationly-admin
+cd ~/stationly-admin
+docker compose ps                                   # want "Up (healthy)"
+docker compose logs --tail 50
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:4000/login   # want 200
-pm2 logs stationly-admin --lines 50
 ```
 
-**Mobile API health check shows 403** after a backend deploy — that's normal:
-the check uses a fake `X-Stationly-Key`; 401/403/200 all mean "server is up".
+**`502 Bad Gateway`** — the container isn't up or nginx points at the wrong
+port. Check `docker compose ps`; ensure the container publishes `127.0.0.1:4000`.
+
+**Deploy Action can't pull the image** — the VM isn't logged into GHCR
+(`docker login ghcr.io …`, step 4.4) or the `<tag>` was never pushed by
+`release.sh`.
+
+**`manifest unknown` / wrong arch** — the image must be built on arm64 (the
+Mac). Don't let CI build it; CI only deploys.
+
+**Notification send `registration-token-not-registered`** — NOT a bug: the
+send pipeline worked; the target device push token is stale (uninstalled /
+expired / wrong Firebase project). Send to a live device to see `successCount`.
+
+**`Missing 'X-Stationly-Key'`** on data screens — the backend predates the
+`/admin/*` routes. Redeploy the backend.
+
+**Redirect to `https://localhost:4000/…`** — proxy/host issue; ensure nginx
+sends `Host $host` (the provided site does).
+
+**Cloudflare Access not prompting** — confirm DNS is proxied (orange cloud) and
+the Access app's destination hostname matches exactly. Test:
+`curl -sI https://staging-admin.stationly.co.uk/` → expect a `302` to
+`…cloudflareaccess.com/…`.
 
 ---
 
-## 8. Local development
+## 9. Local development
 
 ```bash
-cd admin-console
-cp .env.local.example .env.local   # set ADMIN_PASSWORD, SESSION_SECRET, STAGING_ADMIN_KEY
+cp .env.example .env.local         # set ADMIN_PASSWORD, SESSION_SECRET, ADMIN_KEY
 npm install
 npm run dev                        # http://localhost:4000
 ```
-There is no `local` env. To point local dev at a locally-running backend, set
-`STAGING_BACKEND_URL=http://localhost:3000` and make sure that backend's
-`STATIONLY_ADMIN_KEY` matches `STAGING_ADMIN_KEY` (restart it after key changes).
-Otherwise it targets the real staging API.
+Use `STATIONLY_ENV=staging` for local dev (shows the banner). To target a local
+backend, set `BACKEND_URL=http://localhost:3000` and make sure that backend's
+`STATIONLY_ADMIN_KEY` matches `ADMIN_KEY`. To test the actual production image
+locally, use `./release.sh` (build + run) and decline the push.

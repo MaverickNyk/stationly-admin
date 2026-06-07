@@ -8,7 +8,7 @@
 # production
 /build
 
-# env — NEVER commit; holds STATIONLY_ADMIN_KEY + CF service token
+# env — NEVER commit real env files; .env.example IS the committed template
 .env
 .env.local
 .env*.local
@@ -17,7 +17,3 @@
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts.bak
-
-# Deploy scripts (hold host + key path)
-staging_*.sh
-prod_*.sh

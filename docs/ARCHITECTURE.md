@@ -25,7 +25,7 @@ marketing website.
 └───────────────┬─────────────────────────────────────────────────────┘
                 │
 ┌───────────────▼─────────────────────────────────────────────────────┐
-│ Admin Console — Next.js 14 (standalone), pm2 process "stationly-admin"│
+│ Admin Console — Next.js 14, Docker container "stationly-admin" (:4000)│
 │   - pages + UI (dashboard, notifications, audiences, history, users,  │
 │     waitlist, subscribed stations)                                    │
 │   - /api/* route handlers = the SERVER-SIDE PROXY (holds the secrets) │
@@ -141,7 +141,9 @@ imageUrl, deepLink, line tint). See `API.md` for the full payload shape.
 
 ## Tech
 
-- Next.js 14 (App Router), `output: 'standalone'` (self-contained deploy bundle).
-- pm2 process `stationly-admin` on port 4000, behind nginx + Let's Encrypt.
+- Next.js 14 (App Router), `output: 'standalone'` → built into a Docker image
+  (`ghcr.io/mavericknyk/stationly-admin`), promoted same-image staging → prod.
+- Docker container `stationly-admin` on port 4000, behind nginx + Let's Encrypt;
+  deployed via the "Deploy" GitHub Action (pull + `docker compose up -d`).
 - TypeScript throughout; no client-side secrets (`server-only` guard on
   `lib/backend.ts`).

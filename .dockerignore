@@ -1,0 +1,27 @@
+# Keep the build context small and the image secret-free.
+# node_modules is reinstalled from the lockfile inside the image (npm ci).
+node_modules
+.next
+out
+build
+
+# Secrets — MUST never enter an image layer. (.env.example is fine to keep out too.)
+.env
+.env.*
+
+# Deploy / CI tooling — not needed to build the image.
+release.sh
+deploy
+.github
+
+# VCS / local / editor cruft
+.git
+.gitignore
+*.tsbuildinfo
+next-env.d.ts.bak
+.DS_Store
+npm-debug.log*
+
+# Docs aren't needed at build time
+docs
+*.md
