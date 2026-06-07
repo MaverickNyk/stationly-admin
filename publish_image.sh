@@ -14,6 +14,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Ensure we are on the main branch
+BRANCH="$(git branch --show-current)"
+if [ "$BRANCH" != "main" ]; then
+  echo "❌ Error: publish_image.sh can only be run on the 'main' branch."
+  echo "You are currently on: '$BRANCH'"
+  exit 1
+fi
+
 IMAGE="ghcr.io/mavericknyk/stationly-admin"
 SHA="$(git rev-parse --short HEAD)"
 STAMP="$(date -u +%Y%m%d-%H%M)"          # UTC build time, sortable

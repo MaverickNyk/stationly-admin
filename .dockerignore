@@ -10,7 +10,8 @@ build
 .env.*
 
 # Deploy / CI tooling — not needed to build the image.
-release.sh
+publish_image.sh
+run_local.sh
 deploy
 .github
 

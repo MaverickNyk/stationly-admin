@@ -65,7 +65,7 @@ Five independent layers; any one failing does not open the door.
 | 4 | Admin key | `Authorization: Bearer`, constant-time compare, **fail-shut** (503 if unset) | calls to the backend admin API without the key |
 | 5 | Cloudflare Access JWT (opt-in) | backend verifies `Cf-Access-Jwt-Assertion` when `CF_ACCESS_TEAM_DOMAIN`+`CF_ACCESS_AUD` are set | a leaked key used from outside Cloudflare / via the raw origin IP |
 
-See `../CLOUDFLARE_ACCESS.md` for the full Access + origin-lock setup.
+See [cloudflare_access.md](cloudflare_access.md) for the full Access + origin-lock setup.
 
 The mobile app is unaffected: Access (layer 2) is scoped to the `/admin` path
 only; clients hit `/api/v1/*` normally.

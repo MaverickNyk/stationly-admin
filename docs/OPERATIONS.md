@@ -17,7 +17,7 @@ login.
 ```
 Build (your Mac, arm64)         Registry                Each VM
 ─────────────────────           ────────                ───────────────────────────
-release.sh: docker build  ──►   ghcr.io/mavericknyk/    docker compose pull <tag>
+publish_image.sh: docker build  ──►   ghcr.io/mavericknyk/    docker compose pull <tag>
             docker push         stationly-admin:<tag>   docker compose up -d
                                                         └─ container on 127.0.0.1:4000
 
@@ -69,13 +69,13 @@ CF_ACCESS_CLIENT_SECRET=
 
 ## 3. Day-to-day: release & deploy
 
-### 3a. Build, test, push (local — `release.sh`)
+### 3a. Build, test, push (local — `publish_image.sh`)
 
 ```bash
-# fast inner loop (no Docker): npm run dev → http://localhost:4000
-./release.sh          # builds ghcr.io/...:<tag>, prompts you, pushes on "y"
+# fast inner loop (no Docker): ./run_local.sh → choice 1 (http://localhost:4000)
+./publish_image.sh          # builds ghcr.io/...:<tag>, prompts you, pushes on "y"
 ```
-`release.sh` tags the image `<UTC-datetime>-<git-sha>` (e.g.
+`publish_image.sh` tags the image `<UTC-datetime>-<git-sha>` (e.g.
 `20260607-1430-03cfc58`, plus `-dirty` if the tree has uncommitted changes),
 also moves `:latest`, lets you test that exact image (`docker run --env-file
 .env.local -p 4000:4000 …`), and pushes to GHCR only if you confirm. It prints
@@ -85,7 +85,7 @@ the `<tag>` to deploy.
 
 **GitHub → Actions → "Deploy" → Run workflow**, then choose:
 - **environment:** `staging` or `prod`
-- **tag:** the tag `release.sh` printed (e.g. `20260607-1430-03cfc58` — UTC build time + commit)
+- **tag:** the tag `publish_image.sh` printed (e.g. `20260607-1430-03cfc58` — UTC build time + commit)
 
 The Action SSHes to that VM and runs `docker compose pull && docker compose up
 -d` for the tag, then health-checks `127.0.0.1:4000/login`.
@@ -201,7 +201,7 @@ manual approval click.
 
 ## 6. Cloudflare Access (the login wall)
 
-Full guide: `../CLOUDFLARE_ACCESS.md`. The console's piece (App #1):
+Full guide: `cloudflare_access.md`. The console's piece (App #1):
 
 1. **Zero Trust → Settings → Authentication:** One-time PIN is the default
    login method (no setup needed); add Google for SSO if you want.
@@ -216,7 +216,7 @@ Full guide: `../CLOUDFLARE_ACCESS.md`. The console's piece (App #1):
 >
 > **Origin lockdown (recommended):** Access only protects traffic *through*
 > Cloudflare; the raw VM IP is a back door. Lock `:80/:443` to Cloudflare IP
-> ranges (`CLOUDFLARE_ACCESS.md` §5) — carefully, since the backend shares the
+> ranges (`cloudflare_access.md` §5) — carefully, since the backend shares the
 > staging VM (don't lock out the mobile API or SSH).
 
 ---
@@ -325,7 +325,7 @@ port. Check `docker compose ps`; ensure the container publishes `127.0.0.1:4000`
 
 **Deploy Action can't pull the image** — the VM isn't logged into GHCR
 (`docker login ghcr.io …`, step 4.4) or the `<tag>` was never pushed by
-`release.sh`.
+`publish_image.sh`.
 
 **`manifest unknown` / wrong arch** — the image must be built on arm64 (the
 Mac). Don't let CI build it; CI only deploys.
@@ -350,11 +350,10 @@ the Access app's destination hostname matches exactly. Test:
 ## 9. Local development
 
 ```bash
-cp .env.example .env.local         # set ADMIN_PASSWORD, SESSION_SECRET, ADMIN_KEY
 npm install
-npm run dev                        # http://localhost:4000
+./run_local.sh                     # interactive script to run locally (dev or docker)
 ```
 Use `STATIONLY_ENV=staging` for local dev (shows the banner). To target a local
 backend, set `BACKEND_URL=http://localhost:3000` and make sure that backend's
 `STATIONLY_ADMIN_KEY` matches `ADMIN_KEY`. To test the actual production image
-locally, use `./release.sh` (build + run) and decline the push.
+locally, run `./run_local.sh` and choose Option 2 (Local Docker Container).
