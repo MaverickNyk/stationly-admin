@@ -276,11 +276,14 @@ What it probes each cycle:
   the send pipeline (empty `POST` → `400` proves the admin key matches).
 - **Waitlist form** — `POST /api/v1/waitlist/join` (the marketing site's form
   target, no key) with a malformed body → `400` at validation (no row created).
-- **Syncer** — has no endpoint; **inferred** from whether `/modes`,
-  `/lines/status` and `/admin/stats` caches are populated (the strong "down"
-  signal) and from the newest line-status `lastUpdatedTime` (freshness). Because
-  statuses only re-stamp on change (10-min poll; predictions 30s; station
-  catalogue monthly), extreme staleness is reported `degraded`, never `down`.
+- **Syncer** — when `SYNCER_URL` is set, probed **directly** via the Syncer's own
+  `/sync-status` endpoint (real status + the rich per-job last-run breakdown,
+  shown when you click the Syncer row). When unset/unreachable it **falls back**
+  to inferring from whether `/modes`, `/lines/status` and `/admin/stats` caches
+  are populated (the strong "down" signal) and the newest line-status
+  `lastUpdatedTime` (freshness). Because statuses only re-stamp on change (10-min
+  poll; predictions 30s; station catalogue monthly), extreme staleness is
+  reported `degraded`, never `down`.
 - **TLS certs** — opens a raw TLS socket to the backend + website hosts and
   flags certs that are expired (`down`) or within `HEALTHCHECK_TLS_WARN_DAYS`
   (`degraded`) — an expired cert silently blocks the app.
@@ -304,7 +307,8 @@ Config (all optional, see `.env.example`): `STATIONLY_API_KEY` (without it the
 app-surface probes show `skipped`), `WEBSITE_URL`, `HEALTHCHECK_INTERVAL_MS`,
 `HEALTHCHECK_TIMEOUT_MS`, `HEALTHCHECK_HISTORY`, `HEALTHCHECK_SEARCH`,
 `HEALTHCHECK_LATLON`, `HEALTHCHECK_SLOW_MS`, `HEALTHCHECK_TLS_WARN_DAYS`,
-`HEALTHCHECK_SYNCER_STALE_MS`. Confirm the scheduler is alive in the container:
+`HEALTHCHECK_SYNCER_STALE_MS`, `SYNCER_URL` + `SYNCER_STATUS_KEY` (direct Syncer
+probe; see `.env.example` for the Docker host-gateway note). Confirm the scheduler is alive in the container:
 `docker compose logs | grep '\[health\]'` → a "cycle complete" line every ~5 min.
 
 ---

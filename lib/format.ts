@@ -36,3 +36,15 @@ export function toMs(v: number | string | null | undefined): number {
   const p = Date.parse(v);
   return Number.isFinite(p) ? p : 0;
 }
+
+/** Compact duration like "45s", "5m", "3h", "2d" — for ages, uptimes, intervals. */
+export function humanDuration(ms: number): string {
+  if (ms == null || !Number.isFinite(ms)) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}

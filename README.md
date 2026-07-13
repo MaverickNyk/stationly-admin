@@ -35,8 +35,11 @@ public mobile API or the marketing website.
   recent sends, quick actions.
 - **Health** (`/health`) — every backend endpoint the app actually calls,
   probed server-side **at least every 5 min** (continuously, not just when the
-  page is open), plus the StationUI website and an inferred **syncer** signal.
-  Per-endpoint status/latency/HTTP code + 24h uptime strips.
+  page is open), plus the StationUI website and the **Syncer** (probed directly
+  via its `/sync-status` endpoint when `SYNCER_URL` is set, else inferred from
+  data freshness). Per-endpoint status/latency/HTTP code + 24h uptime strips;
+  **click any row** for its last status, recent history, and the Syncer's full
+  per-job run breakdown.
 - **Notifications** (`/notifications`) — composer with live device preview;
   target by `all`/`line`/`topic`/`token`/`tokens`, or a **user picked by
   email/name** (single or multiple).

@@ -5,21 +5,18 @@ import Toolbar from './ui/Toolbar';
 import ErrorBanner from './ui/ErrorBanner';
 import { relTime } from '@/lib/format';
 import { GROUP_META } from '@/lib/health/registry';
-import type { CheckResult, CheckStatus, HealthSnapshot, HistoryPoint } from '@/lib/health/types';
+import { STATUS_LABEL } from '@/lib/health/types';
+import type { CheckResult, HealthSnapshot, HistoryPoint } from '@/lib/health/types';
+import HealthCheckModal from './HealthCheckModal';
 
 const POLL_MS = 30_000;
-const STATUS_LABEL: Record<CheckStatus, string> = {
-  up: 'Operational',
-  degraded: 'Degraded',
-  down: 'Down',
-  skipped: 'Not checked',
-};
 
 export default function HealthDashboard() {
   const [snap, setSnap] = useState<HealthSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -58,6 +55,9 @@ export default function HealthDashboard() {
   }, [load]);
 
   const rollupFor = (group: string) => snap?.rollups.find((r) => r.group === group);
+  // Derive the selected check from the LIVE snapshot so the modal stays fresh as
+  // the dashboard polls; null once it's closed or the id disappears.
+  const selected = selectedId ? snap?.checks.find((c) => c.id === selectedId) ?? null : null;
 
   return (
     <div>
@@ -139,6 +139,7 @@ export default function HealthDashboard() {
                       c={c}
                       history={snap?.history?.[c.id] ?? []}
                       uptime={snap?.uptime?.[c.id]}
+                      onOpen={() => setSelectedId(c.id)}
                     />
                   ))}
                 </tbody>
@@ -155,6 +156,15 @@ export default function HealthDashboard() {
           emails / tripping its rate limiter).
         </p>
       )}
+
+      {selected && (
+        <HealthCheckModal
+          check={selected}
+          history={snap?.history?.[selected.id] ?? []}
+          uptime={snap?.uptime?.[selected.id]}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -170,10 +180,32 @@ function problems(snap: HealthSnapshot): { down: number; degraded: number } {
   );
 }
 
-function Row({ c, history, uptime }: { c: CheckResult; history: HistoryPoint[]; uptime?: number }) {
+function Row({
+  c,
+  history,
+  uptime,
+  onOpen,
+}: {
+  c: CheckResult;
+  history: HistoryPoint[];
+  uptime?: number;
+  onOpen: () => void;
+}) {
   const failing = c.status === 'down' || c.status === 'degraded';
   return (
-    <tr>
+    <tr
+      className="health-row"
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      title="Click for last status & history"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <td>
         <span className={`status-dot ${c.status}`} title={STATUS_LABEL[c.status]} />
       </td>
@@ -196,7 +228,10 @@ function Row({ c, history, uptime }: { c: CheckResult; history: HistoryPoint[]; 
         <Sparkline history={history} />
         <span className="health-uptime">{uptime != null ? `${uptime}%` : '—'}</span>
       </td>
-      <td className="health-detail">{c.detail}</td>
+      <td className="health-detail">
+        <span>{c.detail}</span>
+        <span className="health-row-cta">details ›</span>
+      </td>
     </tr>
   );
 }

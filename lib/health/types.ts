@@ -59,6 +59,9 @@ export interface CheckResult {
   since: number;
   /** Consecutive cycles in a non-`up` state (0 when up). */
   fails: number;
+  /** Optional rich payload for the detail modal (e.g. the Syncer's full
+   * /sync-status JSON). Only set on checks that carry extra structured data. */
+  data?: Record<string, unknown>;
 }
 
 /** Per-group rollup derived from the latest results in that group. */
@@ -112,3 +115,12 @@ export interface Transition {
   detail: string;
   at: number;
 }
+
+/** Human labels per status — shared by the dashboard + detail modal so they
+ * can't drift. (A small runtime const, co-located with CheckStatus by design.) */
+export const STATUS_LABEL: Record<CheckStatus, string> = {
+  up: 'Operational',
+  degraded: 'Degraded',
+  down: 'Down',
+  skipped: 'Not checked',
+};

@@ -44,6 +44,12 @@ export interface ResolvedEnv {
   apiKey?: string;
   cfClientId?: string;
   cfClientSecret?: string;
+  /** Base URL of the Syncer's status API (e.g. http://host.docker.internal:8081).
+   * Opt-in: when unset, the syncer health check falls back to inferring health
+   * from backend data freshness. Server-only, never shipped to the browser. */
+  syncerUrl?: string;
+  /** Bearer key for the Syncer's /sync-status (matches its SYNCER_STATUS_KEY). */
+  syncerKey?: string;
 }
 
 // Per-env default backend URL (mirrors AppConfig.kt). Used only when the flat
@@ -86,5 +92,7 @@ export function resolveEnv(name: EnvName): ResolvedEnv {
     apiKey: process.env.STATIONLY_API_KEY,
     cfClientId: process.env.CF_ACCESS_CLIENT_ID,
     cfClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
+    syncerUrl: process.env.SYNCER_URL?.replace(/\/+$/, ''),
+    syncerKey: process.env.SYNCER_STATUS_KEY,
   };
 }

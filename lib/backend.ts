@@ -356,3 +356,20 @@ export function probeAdminGet(
   }
   return timedFetch(`${cfg.url}/api/v1${path}`, { method: 'GET', headers: cfg.headers }, timeoutMs);
 }
+
+/**
+ * Probe the Syncer's own status API (`GET /sync-status`) — only when `SYNCER_URL`
+ * is configured. Carries the optional bearer key (`SYNCER_STATUS_KEY`). The full
+ * summary JSON comes back in `probe.json` for the dashboard's detail modal.
+ * Returns `httpCode: 0` when the URL is unset or the Syncer is unreachable, so
+ * the caller can fall back to inferring health from backend data freshness.
+ */
+export function probeSyncer(env: EnvName, timeoutMs = DEFAULT_PROBE_TIMEOUT_MS): Promise<RawProbe> {
+  const cfg = resolveEnv(env);
+  if (!cfg.syncerUrl) {
+    return Promise.resolve({ httpCode: 0, latencyMs: 0, error: 'SYNCER_URL not set' });
+  }
+  const headers: Record<string, string> = {};
+  if (cfg.syncerKey) headers.Authorization = `Bearer ${cfg.syncerKey}`;
+  return timedFetch(`${cfg.syncerUrl}/sync-status`, { method: 'GET', headers }, timeoutMs);
+}

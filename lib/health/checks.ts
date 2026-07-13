@@ -10,6 +10,7 @@
 import 'server-only';
 import type { EnvName } from '../env';
 import { resolveEnv, websiteUrl } from '../env';
+import { humanDuration } from '../format';
 import {
   probeRoot,
   probePublic,
@@ -17,6 +18,7 @@ import {
   probeAdminAuth,
   probeAdminGet,
   probeWaitlistJoin,
+  probeSyncer,
   type RawProbe,
 } from '../backend';
 import { probeWebsite } from './website';
@@ -265,11 +267,12 @@ async function runCycle(env: EnvName): Promise<void> {
     recordAdmin(byId(ADMIN_CHECKS, 'admin-waitlist'), waitlist);
     recordAdmin(byId(ADMIN_CHECKS, 'admin-subscribed'), subscribed);
 
-    // 4. Syncer inference — from modes, line statuses (+ their freshness), and admin stats.
+    // 4. Syncer — probe its OWN /sync-status endpoint when SYNCER_URL is set
+    //    (a direct signal + rich breakdown); else infer from backend freshness.
     const newestStatusTs = Array.isArray(lineStatusProbe.json)
       ? lineStatusProbe.json.reduce((mx: number, s: any) => Math.max(mx, Number(s?.lastUpdatedTime) || 0), 0)
       : 0;
-    record(inferSyncer({ modesCount, lineStatusCount, newestStatusTs, stats: statsProbe }));
+    record(await checkSyncer(env, { modesCount, lineStatusCount, newestStatusTs, stats: statsProbe }));
 
     // 5. User auth-gate probes (parallel).
     await Promise.all(
@@ -350,6 +353,59 @@ function classifyAdminAuth(probe: RawProbe): [CheckStatus, string] {
 }
 
 /**
+ * Syncer health. Prefer its OWN /sync-status endpoint (a direct signal, plus the
+ * rich per-job breakdown we attach as `data` for the detail modal). When
+ * SYNCER_URL is unset — or the endpoint is unreachable / answers oddly — fall
+ * back to the data-freshness inference so we never lose the existing signal.
+ */
+async function checkSyncer(
+  env: EnvName,
+  inferArgs: { modesCount: number; lineStatusCount: number; newestStatusTs: number; stats: RawProbe },
+): Promise<CheckResult> {
+  if (!resolveEnv(env).syncerUrl) return inferSyncer(inferArgs);
+
+  const probe = await probeSyncer(env, TIMEOUT_MS);
+  if (probe.httpCode !== 0 && probe.json && typeof probe.json.status === 'string') {
+    return mapSyncerProbe(probe);
+  }
+
+  // Unreachable / unexpected body → keep the inference, but note that the
+  // endpoint itself didn't answer (a misconfigured URL shouldn't read as a
+  // false outage when backend data is clearly fresh).
+  const inferred = inferSyncer(inferArgs);
+  const why = probe.httpCode === 0 ? (probe.error ?? 'unreachable') : `HTTP ${probe.httpCode}`;
+  inferred.detail = `/sync-status ${why} — inferred: ${inferred.detail}`;
+  return inferred;
+}
+
+/** Map a successful /sync-status response to a CheckResult (status + rich data). */
+function mapSyncerProbe(probe: RawProbe): CheckResult {
+  const j = probe.json ?? {};
+  const s = String(j.status);
+  const status: CheckStatus = s === 'down' ? 'down' : s === 'degraded' ? 'degraded' : 'up';
+  const age = typeof j.lastArrivalsAgeMs === 'number' ? humanDuration(j.lastArrivalsAgeMs) : null;
+  const bits: string[] = [String(j.detail || s)];
+  if (j.cycle != null) bits.push(`cycle ${j.cycle}`);
+  if (age) bits.push(`last ${age} ago`);
+  return {
+    id: SYNCER_CHECK.id,
+    group: SYNCER_CHECK.group,
+    label: SYNCER_CHECK.label,
+    method: 'GET',
+    path: '/sync-status',
+    expected: 'up (200) / down (503)',
+    status,
+    httpCode: probe.httpCode,
+    latencyMs: probe.latencyMs,
+    checkedAt: Date.now(),
+    detail: bits.join(' · '),
+    since: 0,
+    fails: 0,
+    data: j,
+  };
+}
+
+/**
  * Infer syncer health (it has no endpoint). Strong signal = data PRESENCE
  * (empty caches ⇒ the syncer never populated, or the catalogue is gone).
  * Freshness signal = newest line-status `lastUpdatedTime`; because statuses
@@ -369,7 +425,7 @@ function inferSyncer(args: {
   const lines = Number(t.lines) || 0;
   const statuses = Number(t.lineStatuses) || 0;
   const ageMs = newestStatusTs ? Date.now() - newestStatusTs : 0;
-  const ageStr = newestStatusTs ? humanAge(ageMs) : 'unknown';
+  const ageStr = newestStatusTs ? humanDuration(ageMs) : 'unknown';
 
   // Authoritative source is admin /stats (always available with the admin key).
   // The public probe counts (modes / lineStatus) are only a fallback when stats
@@ -437,14 +493,6 @@ function hostOf(url: string): string {
   } catch {
     return '';
   }
-}
-
-function humanAge(ms: number): string {
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
 }
 
 /** TLS cert expiry: expired ⇒ down, within warn window ⇒ degraded, else up. */

@@ -723,6 +723,33 @@ table.health-table tbody tr:hover { background: var(--panel-2); }
 .spark.down { background: var(--danger); }
 .spark.skipped { background: var(--border); }
 
+/* ── Clickable health rows → detail modal ── */
+table.health-table tbody tr.health-row { cursor: pointer; }
+table.health-table tbody tr.health-row:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.health-row-cta { display: block; margin-top: 3px; font-size: 11px; font-weight: 700; color: var(--amber); opacity: 0; transition: opacity 0.12s; }
+table.health-table tbody tr.health-row:hover .health-row-cta,
+table.health-table tbody tr.health-row:focus-visible .health-row-cta { opacity: 1; }
+
+.health-modal-detail {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-size: 13px; color: var(--muted); margin-bottom: 4px;
+}
+
+/* per-job "latest run" cards inside the Syncer detail modal */
+.health-jobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.health-job { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.health-job.up { border-color: rgba(74, 222, 128, 0.35); }
+.health-job.degraded { border-color: rgba(255, 176, 32, 0.4); }
+.health-job.down { border-color: rgba(255, 77, 79, 0.45); }
+.health-job-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.health-job-body { font-size: 12px; display: flex; flex-direction: column; gap: 3px; color: var(--text); }
+.health-job-body .muted { color: var(--muted); }
+.health-job-body .count-down { color: var(--danger); font-weight: 700; }
+
+.health-history { list-style: none; margin: 0; padding: 0; }
+.health-history li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.health-history li:last-child { border-bottom: 0; }
+
 /* ── App shell: left sidebar + content column ───────────────────── */
 .app-shell { display: flex; min-height: 100vh; align-items: stretch; }
 .app-main { flex: 1; min-width: 0; }

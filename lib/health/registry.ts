@@ -17,7 +17,7 @@ export const GROUP_META: CheckGroupMeta[] = [
   { group: 'public', label: 'App endpoints', blurb: 'The /api/v1/* surface the app calls — probed with the client key, exactly as the app does.' },
   { group: 'user', label: 'User-gated', blurb: "Auth-gated /user/* routes, probed at the auth gate (expect 401 = route alive, no side effects)." },
   { group: 'admin', label: 'Admin API', blurb: 'The /api/v1/admin/* surface this console uses.' },
-  { group: 'syncer', label: 'Syncer', blurb: 'No endpoint of its own — health inferred from whether the data it populates is present & fresh (statuses poll every 10m, predictions 30s, stations monthly).' },
+  { group: 'syncer', label: 'Syncer', blurb: "Probed directly via the Syncer's /sync-status endpoint (set SYNCER_URL); falls back to inferring from backend data freshness when that's unset/unreachable. Click the row for the last-run breakdown." },
   { group: 'tls', label: 'TLS certs', blurb: 'Certificate expiry for the backend + website hosts — an expired cert silently blocks the app.' },
   { group: 'website', label: 'Website', blurb: 'The public StationUI website.' },
 ];
@@ -97,7 +97,9 @@ export const LIVENESS_CHECK: CheckDef = {
 export const SYNCER_CHECK: CheckDef = {
   id: 'syncer',
   group: 'syncer',
-  label: 'Data freshness',
+  label: 'Syncer status',
+  // Defaults describe the INFERENCE fallback; a live /sync-status probe overrides
+  // method/path/expected on the result (see checks.ts :: mapSyncerProbe).
   method: 'INFER',
   path: '(inferred from /modes, /lines/status, /admin/stats)',
   expected: 'caches populated & fresh',
