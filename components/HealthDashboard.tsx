@@ -173,7 +173,7 @@ function problems(snap: HealthSnapshot): { down: number; degraded: number } {
 function Row({ c, history, uptime }: { c: CheckResult; history: HistoryPoint[]; uptime?: number }) {
   const failing = c.status === 'down' || c.status === 'degraded';
   return (
-    <tr>
+    <tr className={`health-row ${c.status}`}>
       <td>
         <span className={`status-dot ${c.status}`} title={STATUS_LABEL[c.status]} />
       </td>

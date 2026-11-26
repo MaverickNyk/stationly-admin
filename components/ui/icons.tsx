@@ -118,3 +118,18 @@ export const IconAlert = (p: IconProps) => (
     <path d="M12 9v4M12 17h.01" />
   </Base>
 );
+
+export const IconMore = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="5" cy="12" r="1.4" />
+    <circle cx="12" cy="12" r="1.4" />
+    <circle cx="19" cy="12" r="1.4" />
+  </Base>
+);
+
+export const IconSearch = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M20 20l-3.5-3.5" />
+  </Base>
+);

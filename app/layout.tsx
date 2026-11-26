@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Bricolage_Grotesque, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import EnvBanner from '@/components/EnvBanner';
@@ -30,6 +30,15 @@ export const metadata: Metadata = {
   title: 'Stationly Admin',
   description: 'Internal admin console',
   robots: { index: false, follow: false },
+};
+
+// viewport-fit=cover lets the phone bottom bar sit under the home indicator
+// (its padding uses the safe-area insets); theme colour tints the browser bar.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#0b0b0d',
 };
 
 export const dynamic = 'force-dynamic';

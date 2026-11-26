@@ -38,7 +38,7 @@ export default function UserProfile({ uid }: { uid: string }) {
       {d && (
         <>
           <div className="card">
-            <div className="detail-head" style={{ marginBottom: 0, paddingRight: 0 }}>
+            <div className="detail-head profile-head" style={{ marginBottom: 0, paddingRight: 0 }}>
               <div className="detail-avatar">{(d.displayName || d.email || 'U').charAt(0).toUpperCase()}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <h3 style={{ fontSize: 22 }}>{d.displayName || '(no name)'}</h3>
@@ -51,7 +51,7 @@ export default function UserProfile({ uid }: { uid: string }) {
                 </div>
               </div>
               <Link
-                className="btn-ghost"
+                className="btn-ghost profile-send"
                 href={`/notifications?uid=${encodeURIComponent(d.uid)}&name=${encodeURIComponent(d.displayName || d.email)}`}
               >
                 Send notification

@@ -285,7 +285,7 @@ export default function Analytics() {
                       <td>{num(e.users)}</td>
                       <td>{num(e.byPlatform.android ?? 0)}</td>
                       <td>{num(e.byPlatform.ios ?? 0)}</td>
-                      <td className="muted-2" style={{ fontSize: 12 }}>
+                      <td className="muted-2 wide" style={{ fontSize: 12 }}>
                         {e.breakdown
                           ? Object.entries(e.breakdown).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${prettyValue(k)} ${v}`).join(' · ')
                           : ''}

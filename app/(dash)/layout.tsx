@@ -1,5 +1,6 @@
 import Sidebar from '@/components/Sidebar';
 import CommandPalette from '@/components/CommandPalette';
+import TableLabels from '@/components/TableLabels';
 import { activeEnv } from '@/lib/env';
 
 /**
@@ -17,6 +18,7 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
         <main className="page">{children}</main>
       </div>
       <CommandPalette />
+      <TableLabels />
     </div>
   );
 }
