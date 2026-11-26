@@ -106,7 +106,7 @@ export default function PolicyEditor() {
                     {k.about && <div className="muted" style={{ fontSize: 12, marginTop: 3, maxWidth: 520 }}>{k.about}</div>}
                     {k.spec && <div className="muted-2" style={{ fontSize: 11, marginTop: 2 }}>{specText(k.spec)}</div>}
                   </td>
-                  <td style={{ minWidth: 160 }}>
+                  <td className="wide" style={{ minWidth: 160 }}>
                     {editing ? (
                       <ValueInput k={k} value={draft[k.key] ?? ''} onChange={(v) => setDraft((d) => ({ ...d, [k.key]: v }))} />
                     ) : (

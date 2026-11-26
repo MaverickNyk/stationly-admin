@@ -19,10 +19,22 @@ import {
   IconToggle,
   IconSliders,
   IconAlert,
+  IconMore,
+  IconSearch,
 } from './ui/icons';
 
 type Item = { href: string; label: string; Icon: (p: any) => JSX.Element };
 type Group = { heading: string; items: Item[] };
+
+/** The phone's bottom bar: the pages opened most from a phone, then the full menu. */
+const TABS: Item[] = [
+  { href: '/', label: 'Home', Icon: IconDashboard },
+  { href: '/users', label: 'Users', Icon: IconUsers },
+  { href: '/analytics', label: 'Analytics', Icon: IconChart },
+  { href: '/support', label: 'Support', Icon: IconHeart },
+];
+
+const isActive = (href: string, pathname: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 
 const GROUPS: Group[] = [
   {
@@ -72,10 +84,31 @@ export default function Sidebar({ env }: { env: EnvName }) {
           <span className="logo">STATIONLY</span>
           <span className="tag">Admin</span>
         </div>
-        <button className="nav-toggle" aria-label="Menu" onClick={() => setOpen((o) => !o)}>
-          ☰
-        </button>
+        <div className="mobilebar-actions">
+          <button className="nav-toggle" aria-label="Search" onClick={() => window.dispatchEvent(new Event('open-cmdk'))}>
+            <IconSearch />
+          </button>
+          <span className={`env-badge ${meta.tone}`}>{meta.label}</span>
+        </div>
       </div>
+
+      {/* Phone bottom bar (hidden on desktop). The last tab opens the full menu. */}
+      <nav className="tabbar" aria-label="Main">
+        {TABS.map(({ href, label, Icon }) => (
+          <Link key={href} href={href} className={`tabbar-item${isActive(href, pathname) && !open ? ' active' : ''}`}>
+            <Icon />
+            <span>{label}</span>
+          </Link>
+        ))}
+        <button
+          className={`tabbar-item${open || !TABS.some((t) => isActive(t.href, pathname)) ? ' active' : ''}`}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
+          <IconMore />
+          <span>More</span>
+        </button>
+      </nav>
 
       {open && <div className="sidebar-scrim" onClick={() => setOpen(false)} />}
 
@@ -98,7 +131,7 @@ export default function Sidebar({ env }: { env: EnvName }) {
             <div className="sidebar-group" key={g.heading}>
               <div className="sidebar-heading">{g.heading}</div>
               {g.items.map(({ href, label, Icon }) => {
-                const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+                const active = isActive(href, pathname);
                 return (
                   <Link key={href} href={href} className={`sidebar-link${active ? ' active' : ''}`}>
                     <Icon className="sidebar-icon" />

@@ -161,7 +161,8 @@ export default function UsersTable({ env }: { env: EnvName }) {
   return (
     <div>
       {items.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
+        // On a phone the list comes first; the same chart is on the dashboard.
+        <div className="card hide-phone" style={{ marginBottom: 20 }}>
           <h2>User growth</h2>
           <GrowthChart times={items.map((u) => toMs(u.createdAt))} />
         </div>
@@ -206,7 +207,7 @@ export default function UsersTable({ env }: { env: EnvName }) {
         )}
       </Toolbar>
 
-      <div className="seg" style={{ marginBottom: 14 }}>
+      <div className="seg seg-scroll" style={{ marginBottom: 14 }}>
         {SEGMENTS.map((sg) => (
           <button key={sg.key} className={seg === sg.key ? 'active' : ''} onClick={() => { setSeg(sg.key); setPage(1); }}>
             {sg.label} <span className="muted-2">{items.filter((u) => SEGMENT_TEST[sg.key](u)).length}</span>
@@ -219,7 +220,7 @@ export default function UsersTable({ env }: { env: EnvName }) {
           {showFilters ? '▾' : '▸'} Filters{activeFilters ? ` (${activeFilters})` : ''}
         </button>
         {activeFilters > 0 && <button className="btn-ghost" onClick={() => { setF(NO_FILTERS); setPage(1); }}>Clear filters</button>}
-        <span className="muted-2" style={{ fontSize: 12 }}>Filters combine with the segment above and the search.</span>
+        <span className="muted-2 hide-phone" style={{ fontSize: 12 }}>Filters combine with the segment above and the search.</span>
       </div>
       {showFilters && (
         <div className="card filters-panel">

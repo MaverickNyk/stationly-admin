@@ -91,7 +91,7 @@ export default function ClosuresView() {
                   <td>{r.name}<div className="muted" style={{ fontSize: 11 }}>{r.mode}</div></td>
                   <td>{r.event}</td>
                   <td>{r.kind}</td>
-                  <td className="muted" style={{ fontSize: 12, maxWidth: 420 }}>{r.text}</td>
+                  <td className="muted wide" style={{ fontSize: 12, maxWidth: 420 }}>{r.text}</td>
                 </tr>
               ))}
             </tbody>

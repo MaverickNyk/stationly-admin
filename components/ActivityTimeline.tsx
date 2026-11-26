@@ -7,6 +7,7 @@ import { fetchJson } from '@/lib/useResource';
 import { describe, categoryOf, CATEGORY_LABEL, type Category } from '@/lib/activityText';
 
 const NOISE = new Set(['app.backgrounded', 'notification.suppressed', 'widget.count']);
+const PAGE = 150;
 
 export type ActivityRow = { t: number; name: string; props: Record<string, unknown>; platform: string; appVersion: string; deviceId: string };
 
@@ -50,6 +51,10 @@ export default function ActivityTimeline({ uid, compact = false, limit }: { uid:
   const [q, setQ] = useState('');
   const [hideNoise, setHideNoise] = useState(true);
   const [raw, setRaw] = useState(false);
+  // A busy account has thousands of rows; draw a page at a time so the
+  // profile stays a sensible length (and fast) on a phone.
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [uid, days, cat, q, hideNoise]);
 
   const items = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -70,13 +75,13 @@ export default function ActivityTimeline({ uid, compact = false, limit }: { uid:
 
   const groups = useMemo(() => {
     const out: Array<{ day: string; items: typeof items }> = [];
-    for (const it of items) {
+    for (const it of items.slice(0, compact ? items.length : shown)) {
       const d = day(it.t);
       if (out[out.length - 1]?.day !== d) out.push({ day: d, items: [] });
       out[out.length - 1].items.push(it);
     }
     return out;
-  }, [items]);
+  }, [items, compact, shown]);
 
   return (
     <div>
@@ -87,14 +92,14 @@ export default function ActivityTimeline({ uid, compact = false, limit }: { uid:
               <button key={d} className={days === d ? 'active' : ''} onClick={() => setDays(d)}>{d} days</button>
             ))}
           </div>
-          <input className="search" style={{ maxWidth: 240 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search activity…" />
+          <input className="search act-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search activity…" />
           <label className="act-check"><input type="checkbox" checked={hideNoise} onChange={(e) => setHideNoise(e.target.checked)} /> Hide routine</label>
           <label className="act-check"><input type="checkbox" checked={raw} onChange={(e) => setRaw(e.target.checked)} /> Show raw events</label>
-          <button onClick={reload} disabled={busy}>{busy ? '…' : '↻'}</button>
+          <button className="btn-ghost" onClick={reload} disabled={busy} aria-label="Reload activity">{busy ? '…' : '↻'}</button>
         </div>
       )}
       {!compact && rows && rows.length > 0 && (
-        <div className="seg" style={{ margin: '10px 0 4px' }}>
+        <div className="seg seg-scroll" style={{ margin: '10px 0 4px' }}>
           <button className={cat === '' ? 'active' : ''} onClick={() => setCat('')}>All <span className="muted-2">{rows.length}</span></button>
           {(Object.keys(CATEGORY_LABEL) as Category[]).filter((k) => counts[k]).map((k) => (
             <button key={k} className={cat === k ? 'active' : ''} onClick={() => setCat(k)}>
@@ -128,6 +133,12 @@ export default function ActivityTimeline({ uid, compact = false, limit }: { uid:
           </div>
         ))}
       </div>
+      {!compact && items.length > shown && (
+        <div className="act-more">
+          <span className="muted-2">Showing {shown.toLocaleString('en-GB')} of {items.length.toLocaleString('en-GB')}</span>
+          <button className="btn-ghost" onClick={() => setShown((n) => n + PAGE)}>Show {Math.min(PAGE, items.length - shown)} more</button>
+        </div>
+      )}
     </div>
   );
 }

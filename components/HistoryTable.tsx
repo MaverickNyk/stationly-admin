@@ -75,7 +75,7 @@ export default function HistoryTable({ env }: { env: EnvName }) {
               <tr key={it.id}>
                 <td className="muted nowrap" title={dateTime(it.createdAt)}>{relTime(it.createdAt)}</td>
                 <td className="nowrap">{it.audienceSummary}</td>
-                <td>
+                <td className="wide">
                   <div className="cell-title">
                     {it.severity && <span className={`glyph ${it.severity}`}>●</span>}
                     {it.title}
