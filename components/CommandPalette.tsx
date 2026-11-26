@@ -13,13 +13,23 @@ import {
   IconClipboard,
   IconPin,
   IconSettings,
+  IconChart,
+  IconHeart,
+  IconToggle,
+  IconSliders,
+  IconAlert,
 } from './ui/icons';
 
 type Cmd = { label: string; sub?: string; href: string; Icon: (p: any) => JSX.Element };
 
 const PAGES: Cmd[] = [
   { label: 'Dashboard', href: '/', Icon: IconDashboard },
+  { label: 'Analytics', sub: 'Android, iOS, both, versions, funnels', href: '/analytics', Icon: IconChart },
+  { label: 'Support money', href: '/support', Icon: IconHeart },
   { label: 'Health', href: '/health', Icon: IconHealth },
+  { label: 'Feature flags', href: '/flags', Icon: IconToggle },
+  { label: 'Notification policy', href: '/policy', Icon: IconSliders },
+  { label: 'Station closures', href: '/closures', Icon: IconAlert },
   { label: 'Send notification', href: '/notifications', Icon: IconBell },
   { label: 'Notification history', href: '/history', Icon: IconHistory },
   { label: 'Users', href: '/users', Icon: IconUsers },

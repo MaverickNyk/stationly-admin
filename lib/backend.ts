@@ -117,6 +117,12 @@ export interface AdminUser {
   loggedIn: boolean;
   emailVerified: boolean;
   stationCount: number;
+  signInProvider?: string;
+  /** Platforms with a device row (android | ios | web). Absent on an older backend. */
+  platforms?: string[];
+  lastSeen?: number;
+  versions?: Record<string, string>;
+  support?: { count: number; totalMinor: number; lastAtMs: number };
 }
 
 export interface WaitlistEntry {
@@ -149,10 +155,11 @@ async function getJson<T>(env: EnvName, path: string): Promise<BackendResponse<T
 export const getStats = (env: EnvName) =>
   getJson<DashboardStats>(env, '/admin/stats');
 
-export const getUsers = (env: EnvName, refresh = false) =>
+/** `refresh` re-reads only accounts changed since the last sync; `full` re-reads everything (costly). */
+export const getUsers = (env: EnvName, refresh = false, full = false) =>
   getJson<{ items: AdminUser[]; count: number; cached: boolean; refreshedAt: number }>(
     env,
-    `/admin/users${refresh ? '?refresh=1' : ''}`,
+    `/admin/users${full ? '?full=1' : refresh ? '?refresh=1' : ''}`,
   );
 
 export const getWaitlist = (env: EnvName, refresh = false) =>
@@ -170,8 +177,8 @@ export interface DeviceSession {
   osVersion?: string;
   model?: string;
   appVersion?: string;
-  firstSeen?: string;
-  lastSeen?: string;
+  firstSeen?: string | number;
+  lastSeen?: string | number;
 }
 
 export interface UserStation {
@@ -196,6 +203,9 @@ export interface UserDetail {
   stationCount: number;
   sessions: DeviceSession[];
   stations: UserStation[];
+  /** v1 `stations` entries left on an account that now uses 2.0 boards. Not counted. */
+  legacyStations?: UserStation[];
+  support?: { count: number; totalMinor: number; lastAtMs: number };
 }
 
 export const getUserDetail = (env: EnvName, uid: string) =>
@@ -355,4 +365,50 @@ export function probeAdminGet(
     return Promise.resolve({ httpCode: 0, latencyMs: 0, error: e?.message ?? 'ADMIN_KEY not set' });
   }
   return timedFetch(`${cfg.url}/api/v1${path}`, { method: 'GET', headers: cfg.headers }, timeoutMs);
+}
+
+// ── Generic pass-through for the newer admin endpoints ────────────────
+//
+// One proxy instead of a route file per endpoint. ONLY the paths below get
+// through, each with its methods: the browser can never reach an admin
+// endpoint this console does not use (sends, emails and device pushes keep
+// their own dedicated routes).
+
+const PASS_THROUGH: Array<{ re: RegExp; methods: string[] }> = [
+  { re: /^analytics\/(overview|usage)$/, methods: ['GET'] },
+  { re: /^analytics\/import-activity$/, methods: ['POST'] },
+  { re: /^sync-status$/, methods: ['GET'] },
+  { re: /^support\/summary$/, methods: ['GET'] },
+  { re: /^users\/[A-Za-z0-9_-]{1,128}\/activity$/, methods: ['GET'] },
+  { re: /^flags$/, methods: ['GET', 'PUT'] },
+  { re: /^notifications\/policy$/, methods: ['GET', 'PUT'] },
+  { re: /^station-status(\/report)?$/, methods: ['GET'] },
+  { re: /^config\/refresh-push$/, methods: ['POST'] },
+];
+
+export function passThroughAllowed(path: string, method: string): boolean {
+  return PASS_THROUGH.some((p) => p.re.test(path) && p.methods.includes(method));
+}
+
+export async function adminPassThrough(
+  env: EnvName,
+  method: string,
+  path: string,
+  query: string,
+  body?: unknown,
+): Promise<BackendResponse<any>> {
+  const { url, headers } = adminHeaders(env);
+  const res = await fetch(`${url}/api/v1/admin/${path}${query ? `?${query}` : ''}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  });
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    data = { message: await res.text().catch(() => 'Unreadable response') };
+  }
+  return { ok: res.ok, status: res.status, data };
 }

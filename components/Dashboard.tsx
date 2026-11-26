@@ -12,6 +12,11 @@ import { GROUP_META } from '@/lib/health/registry';
 import type { DashboardStats, HistoryItem, AdminUser } from '@/lib/backend';
 import type { HealthSnapshot } from '@/lib/health/types';
 
+type PlatformOverview = {
+  segments: { androidOnly: number; iosOnly: number; both: number };
+  active: Record<'d1' | 'd7' | 'd30', { any: number; android: number; ios: number; both: number }>;
+};
+
 const HEALTH_LABEL: Record<string, string> = {
   up: 'All systems go',
   degraded: 'Degraded',
@@ -26,6 +31,7 @@ export default function Dashboard({ env }: { env: EnvName }) {
   const health = useResource<HealthSnapshot>('/api/admin/health');
   const history = useResource<{ items: HistoryItem[] }>('/api/admin/history?limit=200');
   const users = useResource<{ items: AdminUser[] }>('/api/admin/data?resource=users');
+  const platforms = useResource<PlatformOverview>('/api/admin/x/analytics/overview');
 
   const busyAny = stats.busy || health.busy || history.busy || users.busy;
   function reloadAll() {
@@ -33,6 +39,7 @@ export default function Dashboard({ env }: { env: EnvName }) {
     health.reload();
     history.reload();
     users.reload();
+    platforms.reload();
   }
 
   const items = useMemo(() => history.data?.items ?? [], [history.data]);
@@ -58,6 +65,7 @@ export default function Dashboard({ env }: { env: EnvName }) {
   }, [items]);
 
   const s = stats.data;
+  const p = platforms.data;
 
   return (
     <div>
@@ -78,7 +86,21 @@ export default function Dashboard({ env }: { env: EnvName }) {
       {/* ── Counts ───────────────────────────────────────────────────── */}
       <ErrorBanner message={stats.error} onRetry={() => stats.reload()} busy={stats.busy} />
       <div className="stat-grid">
-        <StatCard label="Users" value={num(s?.users.total)} sub={`${num(s?.users.active)} active now`} href="/users" accent />
+        <StatCard label="Users" value={num(s?.users.total)} sub={`${num(s?.users.active)} signed in`} href="/users" accent />
+        <StatCard
+          label="Seen in 7 days"
+          value={num(p?.active.d7.any)}
+          sub={p ? `${num(p.active.d7.android)} Android · ${num(p.active.d7.ios)} iOS` : '…'}
+          href="/analytics"
+          accent
+        />
+        <StatCard
+          label="Android and iOS"
+          value={num(p?.segments.both)}
+          sub={p ? `${num(p.segments.androidOnly)} Android only · ${num(p.segments.iosOnly)} iOS only` : '…'}
+          href="/analytics"
+          accent
+        />
         <StatCard label="Waitlist" value={num(s?.waitlist.total)} sub="signups" href="/waitlist" accent />
         <StatCard label="Subscribed stations" value={num(s?.subscribedStations)} sub="being watched" href="/stations" accent />
         <StatCard label="Stations" value={num(s?.transport.stations)} sub="in cache" />

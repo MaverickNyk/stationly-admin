@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 /**
  * Generic proxy for the read-only data views.
- *   GET /api/admin/data?env=staging&resource=stats|users|waitlist|subscribed[&refresh=1]
+ *   GET /api/admin/data?env=staging&resource=stats|users|waitlist|subscribed[&refresh=1][&full=1 (users)]
  * Session-gated; resolves env + secrets server-side.
  */
 export async function GET(req: Request) {
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
         result = await getStats(env);
         break;
       case 'users':
-        result = await getUsers(env, refresh);
+        result = await getUsers(env, refresh, searchParams.get('full') === '1');
         break;
       case 'waitlist':
         result = await getWaitlist(env, refresh);
