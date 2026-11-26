@@ -14,6 +14,11 @@ import {
   IconClipboard,
   IconPin,
   IconSettings,
+  IconChart,
+  IconHeart,
+  IconToggle,
+  IconSliders,
+  IconAlert,
 } from './ui/icons';
 
 type Item = { href: string; label: string; Icon: (p: any) => JSX.Element };
@@ -24,6 +29,8 @@ const GROUPS: Group[] = [
     heading: 'Overview',
     items: [
       { href: '/', label: 'Dashboard', Icon: IconDashboard },
+      { href: '/analytics', label: 'Analytics', Icon: IconChart },
+      { href: '/support', label: 'Support money', Icon: IconHeart },
       { href: '/health', label: 'Health', Icon: IconHealth },
     ],
   },
@@ -32,6 +39,9 @@ const GROUPS: Group[] = [
     items: [
       { href: '/notifications', label: 'Send notification', Icon: IconBell },
       { href: '/history', label: 'Notification history', Icon: IconHistory },
+      { href: '/flags', label: 'Feature flags', Icon: IconToggle },
+      { href: '/policy', label: 'Notification policy', Icon: IconSliders },
+      { href: '/closures', label: 'Station closures', Icon: IconAlert },
     ],
   },
   {

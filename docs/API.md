@@ -170,3 +170,27 @@ side effects); the admin endpoints in this doc; and the StationUI website. The
 probed. Aggregated results are served (session-gated) from the console's own
 `GET /api/admin/health`; `POST` triggers an immediate cycle. See
 `OPERATIONS.md §7b`.
+
+## Analytics, support, flags, policy, closures (added 2026-11-26)
+
+The browser reaches these through one session-gated pass-through,
+`/api/admin/x/<path>` → `<backend>/api/v1/admin/<path>`. Only the paths and
+methods allow-listed in `lib/backend.ts` (`PASS_THROUGH`) get through.
+
+| Page | Backend endpoint | Firestore reads |
+|---|---|---|
+| Analytics, top (platforms, versions, signups) | `GET analytics/overview` | 0, cached accounts |
+| Analytics, "What people did" | `GET analytics/usage?days=7\|30\|90` | 0, backend's local activity copy |
+| Analytics, one-time import | `POST analytics/import-activity` | once: every activity doc |
+| User popup, Activity | `GET users/:uid/activity?days=` | 0 |
+| Users, Sync changes | `GET users?refresh=1` (data route) | only accounts changed since last sync |
+| Users, Full resync | `GET users?full=1` (data route) | every account + device |
+| Support money | `GET support/summary?months=6` | that period's payment rows |
+| Feature flags | `GET`/`PUT flags` | write on save |
+| Notification policy | `GET`/`PUT notifications/policy` | write on save |
+| Station closures | `GET station-status`, `station-status/report` | 0 |
+
+Accounts are kept fresh by the backend itself: every write to an account marks it (due 60s later)
+changed, and an hourly job re-reads only those (see the backend's
+`src/admin/CLAUDE.md`). "Seen in N days" uses device `lastSeen`, which lags;
+"What people did" is the real activity. Both count signed-in people only.
