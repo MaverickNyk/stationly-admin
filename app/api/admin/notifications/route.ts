@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { isValidSessionValue, SESSION_COOKIE } from '@/lib/session';
 import { sendNotification } from '@/lib/backend';
 import { activeEnv } from '@/lib/env';
+import { requireStepUp } from '@/lib/stepUp';
 import type { SendRequest } from '@/lib/payload';
 
 export const runtime = 'nodejs';
@@ -16,6 +17,9 @@ export async function POST(req: Request) {
   if (!(await isValidSessionValue(session))) {
     return NextResponse.json({ message: 'Not authenticated.' }, { status: 401 });
   }
+  // Sending a push changes what people see: password again.
+  const denied = requireStepUp(req);
+  if (denied) return denied;
 
   let body: SendRequest;
   try {

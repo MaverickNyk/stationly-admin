@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createSessionValue, SESSION_COOKIE, SESSION_MAX_AGE_S } from '@/lib/session';
+import { samePassword } from '@/lib/stepUp';
 
 export const runtime = 'nodejs';
 
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
       { status: 503 },
     );
   }
-  if (typeof password !== 'string' || password !== expected) {
+  if (typeof password !== 'string' || !samePassword(password, expected)) {
     return NextResponse.json({ message: 'Incorrect password.' }, { status: 401 });
   }
 

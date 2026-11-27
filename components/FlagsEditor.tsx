@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Toolbar from './ui/Toolbar';
 import ErrorBanner from './ui/ErrorBanner';
 import { PLATFORM_LABEL } from './ui/Insight';
-import { fetchJson, useResource } from '@/lib/useResource';
+import { useResource } from '@/lib/useResource';
+import { useConfirmedFetch, StepUpCancelled } from './StepUp';
 
 type Flag = { key: string; about: string; env: string; targets: Record<string, { on: boolean; source: 'live' | 'env' | 'default' }> };
 
@@ -35,11 +36,12 @@ export default function FlagsEditor() {
     });
   }
 
+  const confirmFetch = useConfirmedFetch();
   async function save() {
     setSaving(true);
     setMsg(null);
     try {
-      const r = await fetchJson<{ ok: boolean; pushed: string | null; errors?: string[] }>('/api/admin/x/flags', {
+      const r = await confirmFetch<{ ok: boolean; pushed: string | null; errors?: string[] }>(`Change ${Object.keys(draft).length} feature flag(s)${push ? ' and tell phones to refetch' : ''}`, '/api/admin/x/flags', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ set: draft, reason: reason.trim(), by: 'admin console', push }),
@@ -49,7 +51,7 @@ export default function FlagsEditor() {
       setMsg({ ok: true, text: push ? (r.pushed ? 'Saved. Phones were told to refetch.' : 'Saved, but the refresh push failed.') : 'Saved. Phones pick it up on their next config fetch.' });
       await reload();
     } catch (e: any) {
-      setMsg({ ok: false, text: e?.message ?? 'Save failed' });
+      setMsg({ ok: false, text: e instanceof StepUpCancelled ? 'Not saved: the password check was cancelled.' : e?.message ?? 'Save failed' });
     } finally {
       setSaving(false);
     }

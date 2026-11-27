@@ -133,3 +133,10 @@ export const IconSearch = (p: IconProps) => (
     <path d="M20 20l-3.5-3.5" />
   </Base>
 );
+
+export const IconMail = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="m4 7 8 6 8-6" />
+  </Base>
+);

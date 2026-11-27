@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { isValidSessionValue, SESSION_COOKIE } from '@/lib/session';
 import { adminPassThrough, passThroughAllowed } from '@/lib/backend';
 import { activeEnv } from '@/lib/env';
+import { requireStepUp } from '@/lib/stepUp';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +21,12 @@ async function handle(req: Request, { params }: { params: { path: string[] } }) 
   const path = (params.path ?? []).map(encodeURIComponent).join('/');
   if (!passThroughAllowed(path, req.method)) {
     return NextResponse.json({ message: 'Not available from the console.' }, { status: 404 });
+  }
+  // Every write through here (flags, notification policy, push refresh,
+  // activity import) needs the admin password again.
+  if (req.method !== 'GET') {
+    const denied = requireStepUp(req);
+    if (denied) return denied;
   }
   const query = new URL(req.url).searchParams.toString();
   let body: unknown;

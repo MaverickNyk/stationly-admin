@@ -21,6 +21,7 @@ import {
   IconAlert,
   IconMore,
   IconSearch,
+  IconMail,
 } from './ui/icons';
 
 type Item = { href: string; label: string; Icon: (p: any) => JSX.Element };
@@ -50,6 +51,7 @@ const GROUPS: Group[] = [
     heading: 'Operations',
     items: [
       { href: '/notifications', label: 'Send notification', Icon: IconBell },
+      { href: '/email', label: 'Email', Icon: IconMail },
       { href: '/history', label: 'Notification history', Icon: IconHistory },
       { href: '/flags', label: 'Feature flags', Icon: IconToggle },
       { href: '/policy', label: 'Notification policy', Icon: IconSliders },

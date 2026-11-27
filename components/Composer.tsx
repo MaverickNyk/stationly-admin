@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import NotificationPreview from './NotificationPreview';
 import ViewHeader from './ViewHeader';
+import { useConfirmedFetch, StepUpCancelled } from './StepUp';
 import UserPicker from './UserPicker';
 import { TFL_LINES } from '@/lib/lines';
 import { TEMPLATES } from '@/lib/templates';
@@ -56,6 +57,7 @@ export default function Composer({
   });
 
   const [busy, setBusy] = useState(false);
+  const confirmFetch = useConfirmedFetch();
   const [advanced, setAdvanced] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; data: any } | null>(null);
   // Countdown to actual send (null = not counting). Drives the undo dialog.
@@ -121,15 +123,15 @@ export default function Composer({
     setBusy(true);
     setResult(null);
     try {
-      const res = await fetch('/api/admin/notifications', {
+      const data = await confirmFetch(`Send “${payload.title || 'this notification'}” (${audienceType})${env === 'prod' ? ' to real users' : ''}`, '/api/admin/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audience: buildAudience(), payload: clean(payload) }),
       });
-      const data = await res.json().catch(() => ({}));
-      setResult({ ok: res.ok, data });
+      setResult({ ok: true, data });
     } catch (e: any) {
-      setResult({ ok: false, data: { message: e?.message ?? 'Network error' } });
+      if (e instanceof StepUpCancelled) setResult({ ok: false, data: { message: 'Not sent: the password check was cancelled.' } });
+      else setResult({ ok: false, data: { message: e?.message ?? 'Network error' } });
     } finally {
       setBusy(false);
     }
