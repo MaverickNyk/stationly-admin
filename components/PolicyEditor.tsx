@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import Toolbar from './ui/Toolbar';
 import ErrorBanner from './ui/ErrorBanner';
-import { fetchJson, useResource } from '@/lib/useResource';
+import { useResource } from '@/lib/useResource';
+import { useConfirmedFetch, StepUpCancelled } from './StepUp';
 
 type Spec = { kind: 'bool' | 'int' | 'enum' | 'string' | string; min?: number; max?: number; values?: string[] };
 type Key = { key: string; value: string; source: 'live' | 'env' | 'default'; default?: string; env?: string; spec?: Spec; about?: string };
@@ -66,11 +67,12 @@ export default function PolicyEditor() {
   }, [data, q]);
   const dirty = Object.keys(draft).length > 0;
 
+  const confirmFetch = useConfirmedFetch();
   async function save() {
     setSaving(true);
     setMsg(null);
     try {
-      const r = await fetchJson<{ ok: boolean; pushed: string | null }>('/api/admin/x/notifications/policy', {
+      const r = await confirmFetch<{ ok: boolean; pushed: string | null }>(`Change ${Object.keys(draft).length} notification policy key(s)${push ? ' and tell phones to refetch' : ''}`, '/api/admin/x/notifications/policy', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ set: draft, reason: reason.trim(), by: 'admin console', push }),
@@ -80,7 +82,7 @@ export default function PolicyEditor() {
       setMsg({ ok: true, text: push ? (r.pushed ? 'Saved. Phones were told to refetch.' : 'Saved, but the refresh push failed.') : 'Saved.' });
       await reload();
     } catch (e: any) {
-      setMsg({ ok: false, text: e?.message ?? 'Save failed' });
+      setMsg({ ok: false, text: e instanceof StepUpCancelled ? 'Not saved: the password check was cancelled.' : e?.message ?? 'Save failed' });
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,7 @@
 import Sidebar from '@/components/Sidebar';
 import CommandPalette from '@/components/CommandPalette';
 import TableLabels from '@/components/TableLabels';
+import { StepUpProvider } from '@/components/StepUp';
 import { activeEnv } from '@/lib/env';
 
 /**
@@ -11,6 +12,7 @@ import { activeEnv } from '@/lib/env';
  */
 export default function DashLayout({ children }: { children: React.ReactNode }) {
   return (
+    <StepUpProvider>
     <div className="app-shell">
       <Sidebar env={activeEnv()} />
       <div className="app-main">
@@ -20,5 +22,6 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
       <CommandPalette />
       <TableLabels />
     </div>
+    </StepUpProvider>
   );
 }

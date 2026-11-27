@@ -412,3 +412,34 @@ export async function adminPassThrough(
   }
   return { ok: res.ok, status: res.status, data };
 }
+
+// ── Email studio proxy ────────────────────────────────────────────────
+//
+// The email screens call /api/admin/email/<path>, which lands here. Only the
+// paths below reach the backend's /api/v1/admin/email/*; anything else is a
+// 404 at this app. Sends are part of it on purpose: the backend re-checks the
+// audience count the admin confirmed, so a stale screen can't widen a send.
+
+const EMAIL_PATHS: Array<{ re: RegExp; methods: string[] }> = [
+  { re: /^meta$/, methods: ['GET'] },
+  { re: /^campaigns$/, methods: ['GET', 'POST'] },
+  { re: /^campaigns\/[A-Za-z0-9]{1,40}$/, methods: ['GET', 'PUT', 'DELETE'] },
+  { re: /^campaigns\/[A-Za-z0-9]{1,40}\/(duplicate|send|refresh)$/, methods: ['POST'] },
+  { re: /^campaigns\/[A-Za-z0-9]{1,40}\/deliveries$/, methods: ['GET'] },
+  { re: /^(render|audience|test)$/, methods: ['POST'] },
+  { re: /^assets$/, methods: ['GET', 'POST'] },
+  { re: /^optouts$/, methods: ['GET'] },
+];
+
+export function emailPathAllowed(path: string, method: string): boolean {
+  return EMAIL_PATHS.some((p) => p.re.test(path) && p.methods.includes(method));
+}
+
+export async function adminEmailProxy(
+  env: EnvName,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<BackendResponse<any>> {
+  return adminPassThrough(env, method, `email/${path}`, '', body);
+}

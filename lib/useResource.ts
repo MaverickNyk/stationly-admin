@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 export async function fetchJson<T = any>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const data = await res.json().catch(() => ({} as any));
-  if (!res.ok) throw new Error((data as any)?.message || `Failed (${res.status})`);
+  if (!res.ok) throw new Error((data as any)?.message || (res.status === 413 ? 'That upload is too large.' : `Failed (${res.status})`));
   return data as T;
 }
 

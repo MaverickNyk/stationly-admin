@@ -5,8 +5,9 @@ import Toolbar from './ui/Toolbar';
 import ErrorBanner from './ui/ErrorBanner';
 import { Tile, BarList, PLATFORM_LABEL, pct } from './ui/Insight';
 import { relTime, num } from '@/lib/format';
-import { fetchJson, useResource } from '@/lib/useResource';
+import { useResource } from '@/lib/useResource';
 import { eventLabel } from '@/lib/activityText';
+import { useConfirmedFetch, StepUpCancelled } from './StepUp';
 
 type Window = { any: number; android: number; ios: number; web: number; both: number };
 type Overview = {
@@ -57,11 +58,12 @@ export default function Analytics() {
   const usage = useResource<{ days: number; report: Usage | null }>(`/api/admin/x/analytics/usage?days=${days}`);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState('');
+  const confirmFetch = useConfirmedFetch();
   async function importHistory() {
     setImporting(true);
     setImportMsg('');
     try {
-      const r = await fetchJson<{ docs: number; events: number }>('/api/admin/x/analytics/import-activity', {
+      const r = await confirmFetch<{ docs: number; events: number }>('Import 120 days of activity (one Firestore collection-group read)', '/api/admin/x/analytics/import-activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days: 120 }),
@@ -69,7 +71,7 @@ export default function Analytics() {
       setImportMsg(`Imported ${num(r.events)} events from ${num(r.docs)} documents.`);
       await usage.reload();
     } catch (e: any) {
-      setImportMsg(e?.message ?? 'Import failed');
+      setImportMsg(e instanceof StepUpCancelled ? 'Not imported: the password check was cancelled.' : e?.message ?? 'Import failed');
     } finally {
       setImporting(false);
     }
