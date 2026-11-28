@@ -9,7 +9,7 @@ export type Align = 'left' | 'center';
 export type IconName = 'logo' | 'tube' | 'bus' | 'dlr' | 'elizabeth' | 'overground' | 'apple' | 'android';
 
 export type EmailBlock =
-  | { id: string; type: 'heading'; text: string; eyebrow?: string; size?: 'xl' | 'lg' | 'md'; align?: Align; accent?: string }
+  | { id: string; type: 'heading'; text: string; eyebrow?: string; size?: 'xl' | 'lg' | 'md'; align?: Align; accent?: string; oneLine?: boolean }
   | { id: string; type: 'text'; text: string; size?: 'md' | 'sm'; tone?: 'default' | 'muted'; align?: Align }
   | { id: string; type: 'image'; url: string; alt: string; href?: string; width?: number; rounded?: boolean; caption?: string; align?: Align }
   | { id: string; type: 'button'; label: string; url: string; variant?: 'primary' | 'dark' | 'outline'; align?: Align }
@@ -19,7 +19,7 @@ export type EmailBlock =
   | { id: string; type: 'callout'; text: string; title?: string; tone?: 'info' | 'warning' | 'success' | 'note' }
   | { id: string; type: 'list'; items: string[]; ordered?: boolean }
   | { id: string; type: 'references'; title?: string; items: Array<{ text: string; url?: string }> }
-  | { id: string; type: 'signoff'; name: string; role?: string; text?: string }
+  | { id: string; type: 'signoff'; name: string; role?: string; text?: string; logo?: boolean; url?: string }
   | { id: string; type: 'divider' }
   | { id: string; type: 'spacer'; size?: number };
 
