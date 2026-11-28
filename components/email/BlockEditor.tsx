@@ -168,7 +168,10 @@ function BlockFields({ blk, set, meta }: { blk: EmailBlock; set: (p: any) => voi
       return (<>
         <Field label="Eyebrow (small red line above)"><input value={blk.eyebrow || ''} onChange={(e) => set({ eyebrow: e.target.value })} /></Field>
         <Field label="Heading"><input value={blk.text} onChange={(e) => set({ text: e.target.value })} /></Field>
-        <Field label="Red second line (optional)"><input value={blk.accent || ''} onChange={(e) => set({ accent: e.target.value })} /></Field>
+        <Field label="Red part (optional)"><input value={blk.accent || ''} onChange={(e) => set({ accent: e.target.value })} /></Field>
+        <div className="em-checks">
+          <label><input type="checkbox" checked={!!blk.oneLine} disabled={!blk.accent} onChange={(e) => set({ oneLine: e.target.checked })} /> Keep on one line (phones break only between the two parts)</label>
+        </div>
         <div className="row em-row-wrap">
           <Field label="Size"><div className="seg em-seg-sm">{(['xl', 'lg', 'md'] as const).map((s) => <button type="button" key={s} className={(blk.size || 'xl') === s ? 'active' : ''} onClick={() => set({ size: s })}>{s === 'xl' ? 'Large' : s === 'lg' ? 'Medium' : 'Small'}</button>)}</div></Field>
           <Field label="Align"><Align value={blk.align} onChange={(align) => set({ align })} /></Field>
@@ -262,6 +265,10 @@ function BlockFields({ blk, set, meta }: { blk: EmailBlock; set: (p: any) => voi
         <div className="row em-row-wrap">
           <Field label="Name"><input value={blk.name} onChange={(e) => set({ name: e.target.value })} /></Field>
           <Field label="Role (optional)"><input value={blk.role || ''} onChange={(e) => set({ role: e.target.value })} /></Field>
+        </div>
+        <Field label="Website link (optional)"><input value={blk.url || ''} onChange={(e) => set({ url: e.target.value })} placeholder="https://stationly.co.uk" /></Field>
+        <div className="em-checks">
+          <label><input type="checkbox" checked={!!blk.logo} onChange={(e) => set({ logo: e.target.checked })} /> Signature card: Stationly logo beside the name</label>
         </div>
       </>);
     case 'spacer':
